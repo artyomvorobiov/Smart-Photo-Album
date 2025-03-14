@@ -1,0 +1,9 @@
+{
+  "files": [
+    "eng.traineddata",
+    "rus.traineddata",
+    "pdf.ttf"
+  ],  
+  "tessedit_char_whitelist": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+}
+  
