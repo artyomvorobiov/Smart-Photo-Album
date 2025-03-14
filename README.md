@@ -1,4 +1,4 @@
-# trip
+# Умный фотоальбом
 
 A new Flutter project.
 
