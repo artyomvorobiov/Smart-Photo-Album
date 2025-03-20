@@ -19,11 +19,11 @@ class PhotoService {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   List<Map<String, dynamic>> _serverPhotos = [];
   final minio = Minio(
-    endPoint: '91.197.98.163',
-    port: 9000,
-    accessKey: 'minioadmin',
-    secretKey: 'minioadminpassword',
-    useSSL: false,
+    endPoint: '******',
+    port: ******,
+    accessKey: '******',
+    secretKey: '******',
+    useSSL: ******,
   );
 
   Future<String> uploadPhotoToServer(AssetEntity localPhoto) async {
@@ -343,7 +343,6 @@ class PhotoService {
       String downloadUrl = await minio.presignedGetObject(
         bucketName,
         localPhoto.title!,
-        expires: 7 * 24 * 3600,
       );
       final List<String> tags = await _getTranslatedImageLabels(file);
       String extractedText = '';
