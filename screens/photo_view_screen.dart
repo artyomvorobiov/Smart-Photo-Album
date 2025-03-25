@@ -63,14 +63,14 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
   gm.LatLng? _photoLocation;
   gm.GoogleMapController? _mapController;
   List<Map<String, dynamic>> _predictions = [];
-  String googleApiKey = "AIzaSyCQ8vbtQMgNbgIRonzzUo234QFhF_4IzFE"; 
+  String googleApiKey = '****'; 
 
   final minio = Minio(
-    endPoint: '91.197.98.163',
-    port: 9000,
-    accessKey: 'minioadmin',
-    secretKey: 'minioadminpassword',
-    useSSL: false,
+    endPoint: '****',
+    port: '****',
+    accessKey: '****',
+    secretKey: '****',
+    useSSL: '****',
   );
   int _currentIndex = 0;
   PageController? _pageController;
