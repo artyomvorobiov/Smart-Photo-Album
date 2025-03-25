@@ -32,11 +32,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   final ImagePicker _picker = ImagePicker();
   final ProfileService _profileService = ProfileService();
   final Minio _minio = Minio(
-    endPoint: '91.197.98.163',
-    port: 9000,
-    accessKey: 'minioadmin',
-    secretKey: 'minioadminpassword',
-    useSSL: false,
+    endPoint: '****',
+    port: '****',
+    accessKey: '****',
+    secretKey: '****',
+    useSSL: '****',
   );
   User? _currentUser;
   bool _isNicknameTaken = false;
