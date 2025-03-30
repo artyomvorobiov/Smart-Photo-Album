@@ -372,54 +372,55 @@ if (querySnapshot.docs.isNotEmpty) {
                           constraints: const BoxConstraints(maxHeight: 200),
                           child: ListView(
                             shrinkWrap: true,
-                            children: currentSharedWith.entries.map((entry) {
-                              final uid = entry.key;
-                              final perms = Map<String, dynamic>.from(entry.value);
-                              return FutureBuilder<String>(
-                                future: _fetchNickname(uid),
-                                builder: (context, snap) {
-                                  if (!snap.hasData) {
-                                    return ListTile(
-                                      title: Text("Загрузка… ($uid)"),
-                                    );
-                                  }
-                                  final nickname = snap.data!;
-                                  return ListTile(
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(horizontal: 0),
-                                    title: Text(nickname),
-                                    subtitle: _buildPermissionIcons(perms),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue),
-                                          tooltip: "Изменить права",
-                                          onPressed: () async {
-                                            final newPerms =
-                                                await _editSinglePermissionChipBased(uid, perms);
-                                            if (newPerms != null) {
-                                              setStateDialog(() {
-                                                currentSharedWith[uid] = newPerms;
-                                              });
-                                            }
-                                          },
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          tooltip: "Удалить пользователя",
-                                          onPressed: () {
-                                            setStateDialog(() {
-                                              currentSharedWith.remove(uid);
-                                            });
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              );
-                            }).toList(),
+                            children: currentSharedWith.entries
+  .where((entry) => entry.key != _auth.currentUser!.uid && entry.key != folder['owner'])
+  .map((entry) {
+    final uid = entry.key;
+    final perms = Map<String, dynamic>.from(entry.value);
+    return FutureBuilder<String>(
+      future: _fetchNickname(uid),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return ListTile(
+            title: Text("Загрузка… ($uid)"),
+          );
+        }
+        final nickname = snap.data!;
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+          title: Text(nickname),
+          subtitle: _buildPermissionIcons(perms),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.blue),
+                tooltip: "Изменить права",
+                onPressed: () async {
+                  final newPerms =
+                      await _editSinglePermissionChipBased(uid, perms);
+                  if (newPerms != null) {
+                    setStateDialog(() {
+                      currentSharedWith[uid] = newPerms;
+                    });
+                  }
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                tooltip: "Удалить пользователя",
+                onPressed: () {
+                  setStateDialog(() {
+                    currentSharedWith.remove(uid);
+                  });
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }).toList(),
                           ),
                         ),
                   const SizedBox(height: 10),
