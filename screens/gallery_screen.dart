@@ -155,6 +155,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   List<String> _suggestedTags = [];
   String? _source;
   late AnimationController _loadingController;
+  
 
   @override
   void initState() {
@@ -337,41 +338,107 @@ class _GalleryScreenState extends State<GalleryScreen>
     }
   }
 
- Future<void> _fetchLocalPhotos() async {
-  List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(type: RequestType.image);
-  Set<AssetEntity> uniqueImages = {};
-  Set<String?> serverPhotoIds = _serverPhotos
-      .map((photo) => photo['id'] as String?)
-      .where((id) => id != null)
-      .toSet();
-  for (var path in paths) {
-    int totalCount = await path.assetCountAsync;
-    int end = totalCount > 100 ? 100 : totalCount;
-    final List<AssetEntity> initialAssets = await path.getAssetListRange(start: 0, end: end);
-    uniqueImages.addAll(
-      initialAssets.where((asset) => !serverPhotoIds.contains(asset.title)),
-    );
-  }
-  List<AssetEntity> initialList = uniqueImages.toList();
-  if (initialList.length > 300) {
-    initialList = initialList.sublist(0, 300);
-  }
+  void _updateGroupsIncrementally(List<AssetEntity> newPhotos) {
+  DateFormat formatter = DateFormat('yyyy-MM-dd');
   setState(() {
-    _photos = initialList;
-  });
-  for (var path in paths) {
-    int totalCount = await path.assetCountAsync;
-    if (totalCount > 100) {
-      final List<AssetEntity> remainingAssets = await path.getAssetListRange(start: 100, end: totalCount);
-      uniqueImages.addAll(
-        remainingAssets.where((asset) => !serverPhotoIds.contains(asset.title)),
-      );
+    for (var photo in newPhotos) {
+      String key = formatter.format(photo.createDateTime);
+      var photoItem = {
+        'type': 'local',
+        'photo': photo,
+        'date': photo.createDateTime,
+      };
+      if (_photosGroupedByDate.containsKey(key)) {
+        _photosGroupedByDate[key]!.add(photoItem);
+      } else {
+        _photosGroupedByDate[key] = [photoItem];
+      }
     }
-  }
-  setState(() {
-    _photos = uniqueImages.toList();
   });
 }
+
+
+Future<void> _fetchLocalPhotos() async {
+  List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+    type: RequestType.image,
+  );
+  Set<AssetEntity> uniqueImages = {};
+  if (widget.folderFilter != null && widget.folderFilter!.isNotEmpty) {
+    List<String> requiredPhotoTitles = List<String>.from(widget.folderFilter!);
+    for (var path in paths) {
+      int totalCount = await path.assetCountAsync;
+      int end = totalCount > 300 ? 300 : totalCount;
+      final List<AssetEntity> assets = await path.getAssetListRange(start: 0, end: end);
+      for (var asset in assets) {
+        if (requiredPhotoTitles.contains(asset.title)) {
+          uniqueImages.add(asset);
+          requiredPhotoTitles.remove(asset.title);
+        }
+      }
+      if (requiredPhotoTitles.isEmpty) break;
+    }
+    setState(() {
+      _photos = uniqueImages.toList();
+    });
+  } else if (_source == "favorites") {
+    Set<AssetEntity> favoritePhotos = {};
+    final Set<String> favoriteTitles = _userLocalFavorites.toSet();
+    for (var path in paths) {
+      int totalCount = await path.assetCountAsync;
+      final List<AssetEntity> assets = await path.getAssetListRange(start: 0, end: totalCount);
+      for (var asset in assets) {
+        if (asset.title != null && favoriteTitles.contains(asset.title)) {
+          favoritePhotos.add(asset);
+          if (favoritePhotos.length == favoriteTitles.length) break;
+        }
+      }
+      if (favoritePhotos.length == favoriteTitles.length) break;
+    }
+    setState(() {
+      _photos = favoritePhotos.toList();
+    });
+  } else {
+    int fetchedCount = 0;
+    for (var path in paths) {
+      int totalCount = await path.assetCountAsync;
+      if (fetchedCount >= 500) break;
+      int toFetch = totalCount;
+      if (fetchedCount + totalCount > 500) {
+        toFetch = 500 - fetchedCount;
+      }
+      final List<AssetEntity> assets =
+          await path.getAssetListRange(start: 0, end: toFetch);
+      uniqueImages.addAll(assets);
+      fetchedCount += assets.length;
+    }
+    setState(() {
+      _photos = uniqueImages.toList();
+    });
+
+   Future(() async {
+  Set<AssetEntity> allImages = {};
+  for (var path in paths) {
+    int totalCount = await path.assetCountAsync;
+    final List<AssetEntity> assets =
+        await path.getAssetListRange(start: 0, end: totalCount);
+    allImages.addAll(assets);
+  }
+  final newPhotos = allImages.difference(_photos.toSet()).toList();
+  if (newPhotos.isNotEmpty) {
+    setState(() {
+      _photos.addAll(newPhotos);
+    });
+    _updateGroupsIncrementally(newPhotos);
+  }
+});
+
+
+
+  }
+}
+
+
+
   void _groupPhotosByDate() async {
     List<dynamic> allPhotos = [];
     for (var photo in _photos) {
