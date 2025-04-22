@@ -16,6 +16,11 @@ import 'package:trip/screens/photo_edit_screen.dart';
 import 'package:trip/services/photo_service.dart';
 import 'package:trip/services/profile_service.dart';
 
+const Color kBackgroundColor = Color(0xFFF5EEDC);
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
+
 class PhotoViewScreen extends StatefulWidget {
   final AssetEntity? localPhoto;
   final Map<String, dynamic>? serverPhoto;
@@ -63,15 +68,16 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
   gm.LatLng? _photoLocation;
   gm.GoogleMapController? _mapController;
   List<Map<String, dynamic>> _predictions = [];
-  String googleApiKey = '****'; 
+  String googleApiKey = "****"; 
 
   final minio = Minio(
     endPoint: '****',
-    port: '****',
+    port: ****,
     accessKey: '****',
     secretKey: '****',
-    useSSL: '****',
+    useSSL: ****,
   );
+  
   int _currentIndex = 0;
   PageController? _pageController;
   bool _isLoading = false;
@@ -156,14 +162,14 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
             return PhotoEditScreen(serverPhoto: photoForEditing);
           } else {
             return Scaffold(
-              body: Center(child: Text("Неверный формат фото")),
+              body: Center(child: Text("Неверный формат фото", style: TextStyle(color: kPrimaryColor))),
             );
           }
         },
       ),
     );
     if (editedFile != null) {
-      print("Отредактированный файл: ${editedFile.path}");
+      debugPrint("Отредактированный файл: ${editedFile.path}");
     }
   }
 
@@ -181,7 +187,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white.withOpacity(0.9),
+      backgroundColor: kBackgroundColor.withOpacity(0.95),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -247,30 +253,38 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                 padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
                 child: Container(
                   height: MediaQuery.of(context).size.height * 0.7,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        width: 40,
-                        height: 6,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(4),
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 6,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: TextField(
-                          controller: searchController,
-                          decoration: InputDecoration(
-                            hintText: "Введите адрес или место",
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
+                      TextField(
+                        controller: searchController,
+                        style: TextStyle(color: kPrimaryColor),
+                        decoration: InputDecoration(
+                          hintText: "Введите адрес или место",
+                          hintStyle: TextStyle(color: kPrimaryColor.withOpacity(0.6)),
+                          prefixIcon: Icon(Icons.search, color: kPrimaryColor),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: BorderSide(color: kPrimaryColor),
                           ),
-                          onChanged: _onSearchChanged,
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: BorderSide(color: kAccentColor, width: 2),
+                          ),
                         ),
+                        onChanged: _onSearchChanged,
                       ),
                       FutureBuilder<List<String>>(
                         future: _photoService.fetchUsedAddressesForCurrentUser(),
@@ -289,41 +303,39 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                                     style: TextStyle(fontWeight: FontWeight.bold),
                                   ),
                                 ),
-...snapshot.data!.map((addr) => ListTile(
-  leading: const Icon(Icons.location_on),
-  title: Text(addr),
- onTap: () async {
-  final geocodeUrl =
-      "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(addr)}&language=ru&key=$googleApiKey";
-  try {
-    final response = await http.get(Uri.parse(geocodeUrl));
-    debugPrint("Geocode response: ${response.body}");
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data["status"] == "OK" &&
-          data["results"] != null &&
-          data["results"].isNotEmpty) {
-        final locationData = data["results"][0]["geometry"]["location"];
-        double lat = locationData["lat"];
-        double lng = locationData["lng"];
-        setStateModal(() {
-          searchController.text = addr;
-          tempLocation = gm.LatLng(lat, lng);
-        });
-        Navigator.pop(context);
-        _updatePhotoLocation(gm.LatLng(lat, lng), addr);
-      } else {
-        debugPrint("Нет результатов по адресу: $addr");
-      }
-    } else {
-      debugPrint("Ошибка HTTP: ${response.statusCode}");
-    }
-  } catch (e) {
-    debugPrint("Ошибка геокодирования: $e");
-  }
-},
-)),
-
+                                ...snapshot.data!.map((addr) => ListTile(
+                                  leading: Icon(Icons.location_on, color: kAccentColor),
+                                  title: Text(addr, style: TextStyle(color: kPrimaryColor)),
+                                  onTap: () async {
+                                    final geocodeUrl =
+                                        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(addr)}&language=ru&key=$googleApiKey";
+                                    try {
+                                      final response = await http.get(Uri.parse(geocodeUrl));
+                                      if (response.statusCode == 200) {
+                                        final data = json.decode(response.body);
+                                        if (data["status"] == "OK" &&
+                                            data["results"] != null &&
+                                            data["results"].isNotEmpty) {
+                                          final locationData = data["results"][0]["geometry"]["location"];
+                                          double lat = locationData["lat"];
+                                          double lng = locationData["lng"];
+                                          setStateModal(() {
+                                            searchController.text = addr;
+                                            tempLocation = gm.LatLng(lat, lng);
+                                          });
+                                          Navigator.pop(context);
+                                          _updatePhotoLocation(gm.LatLng(lat, lng), addr);
+                                        } else {
+                                          debugPrint("Нет результатов по адресу: $addr");
+                                        }
+                                      } else {
+                                        debugPrint("Ошибка HTTP: ${response.statusCode}");
+                                      }
+                                    } catch (e) {
+                                      debugPrint("Ошибка геокодирования: $e");
+                                    }
+                                  },
+                                )),
                               ],
                             );
                           } else {
@@ -338,17 +350,17 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                             itemBuilder: (context, index) {
                               final p = localPredictions[index];
                               return ListTile(
-                                leading: const Icon(Icons.location_on),
-                                title: Text(p["description"] ?? ""),
+                                leading: Icon(Icons.location_on, color: kAccentColor),
+                                title: Text(p["description"] ?? "", style: TextStyle(color: kPrimaryColor)),
                                 onTap: () => _onPredictionTap(p),
                               );
                             },
                           ),
                         )
                       else
-                        const Expanded(
+                        Expanded(
                           child: Center(
-                            child: Text("Нет подсказок..."),
+                            child: Text("Нет подсказок...", style: TextStyle(color: kPrimaryColor)),
                           ),
                         ),
                       Padding(
@@ -356,6 +368,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: kAccentColor,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -387,9 +400,8 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
   Future<String?> _reverseGeocode(gm.LatLng location) async {
     final lat = location.latitude;
     final lng = location.longitude;
-    final url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng"
-        "&language=ru"
-        "&key=$googleApiKey";
+    final url =
+        "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&language=ru&key=$googleApiKey";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -405,15 +417,26 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     return null;
   }
 
+String _permissionType(Map<String, dynamic> sharedWith, String userId) {
+  final perm = sharedWith[userId];
+  if (perm is String) {
+    return perm; 
+  } else if (perm is Map<String, dynamic>) {
+    return perm['deletePhotos'] == true ? 'save' : 'view';
+  }
+  return 'view';
+}
+
+
   void _onPressSave() async {
     if (currentPhoto == null || currentPhoto is! Map<String, dynamic>) return;
     final currentUser = _auth.currentUser;
     if (currentUser == null) return;
     final sharedWith = (currentPhoto as Map<String, dynamic>)['sharedWith'] as Map<String, dynamic>? ?? {};
-    final String? userPermission = sharedWith[currentUser.uid];
     final ownerUid = (currentPhoto as Map<String, dynamic>)['owner']?['uid'];
     final bool isOwner = ownerUid == currentUser.uid;
-    final bool canSave = (currentPhoto is AssetEntity) || isOwner || userPermission == 'save';
+    final String permission = _permissionType(sharedWith, currentUser.uid);
+    final bool canSave = (currentPhoto is AssetEntity) || isOwner || permission == 'save';
     if (!canSave) {
       _showCustomMessage("Нет прав для сохранения фото.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
@@ -480,9 +503,9 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     if (currentPhoto is Map<String, dynamic>) {
       final ownerUid = (currentPhoto as Map<String, dynamic>)['owner']?['uid'];
       final sharedWith = (currentPhoto as Map<String, dynamic>)['sharedWith'] as Map<String, dynamic>? ?? {};
-      final userPermission = sharedWith[currentUser.uid];
       final bool isOwner = (ownerUid == currentUser.uid);
-      final bool canDelete = isOwner || userPermission == 'save';
+      final String permission = _permissionType(sharedWith, currentUser.uid);
+      final bool canDelete = isOwner || permission == 'save';
       if (!canDelete) {
         _showCustomMessage("Нет прав для удаления.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
         return;
@@ -492,20 +515,22 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
       final choice = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text("Подтверждение удаления"),
-          content: const Text("Удалить фото только из папки или полностью из галереи?"),
+          backgroundColor: kBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text("Подтверждение удаления", style: TextStyle(color: kPrimaryColor, fontWeight: FontWeight.bold)),
+          content: Text("Удалить фото только из папки или полностью из галереи?", style: TextStyle(color: kPrimaryColor)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, "folder"),
-              child: const Text("Из папки"),
+              child: Text("Из папки", style: TextStyle(color: kAccentColor)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, "gallery"),
-              child: const Text("Из галереи"),
+              child: Text("Из галереи", style: TextStyle(color: kAccentColor)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, "cancel"),
-              child: const Text("Отмена"),
+              child: Text("Отмена", style: TextStyle(color: kPrimaryColor)),
             ),
           ],
         ),
@@ -612,19 +637,21 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: Text(message),
+          backgroundColor: kBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(title, style: TextStyle(color: kPrimaryColor, fontWeight: FontWeight.bold)),
+          content: Text(message, style: TextStyle(color: kPrimaryColor)),
           actions: [
             TextButton(
-              child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+              child: Text('Отмена', style: TextStyle(color: kPrimaryColor)),
               onPressed: () => Navigator.of(context).pop(false),
             ),
             ElevatedButton(
-              child: const Text('Удалить'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Удалить', style: TextStyle(color: kBackgroundColor)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
               onPressed: () => Navigator.of(context).pop(true),
             ),
           ],
@@ -637,17 +664,19 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
   void _onPressShare() async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
-      _showCustomMessage("Пользователь не авторизован.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Пользователь не авторизован.",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
     }
     if (currentPhoto is Map<String, dynamic>) {
       final ownerUid = (currentPhoto as Map<String, dynamic>)['owner']?['uid'];
       final sharedWith = (currentPhoto as Map<String, dynamic>)['sharedWith'] as Map<String, dynamic>? ?? {};
-      final userPermission = sharedWith[currentUser.uid];
       final bool isOwner = ownerUid == currentUser.uid;
-      final bool canShare = isOwner || userPermission == 'save';
+      final String permission = _permissionType(sharedWith, currentUser.uid);
+      final bool canShare = isOwner || permission == 'save';
       if (!canShare) {
-        _showCustomMessage("Нет прав для отправки фото.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+        _showCustomMessage("Нет прав для отправки фото.",
+            icon: Icons.error_outline, backgroundColor: Colors.redAccent);
         return;
       }
     }
@@ -662,7 +691,8 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
       }).toList();
       final selectedUsers = await _showUserSelectionBottomSheet(context, fullUsers);
       if (selectedUsers == null || selectedUsers.isEmpty) {
-        _showCustomMessage("Никто не выбран для отправки.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+        _showCustomMessage("Никто не выбран для отправки.",
+            icon: Icons.error_outline, backgroundColor: Colors.redAccent);
         return;
       }
       if (currentPhoto is AssetEntity) {
@@ -670,13 +700,15 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
       } else if (currentPhoto is Map<String, dynamic>) {
         final success = await _shareServerPhoto(currentPhoto, selectedUsers);
         if (!success) {
-          _showCustomMessage("Ошибка при отправке фотографии.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+          _showCustomMessage("Ошибка при отправке фотографии.",
+              icon: Icons.error_outline, backgroundColor: Colors.redAccent);
           return;
         }
       }
       _showCustomMessage("Фото успешно отправлено");
     } catch (e) {
-      _showCustomMessage("Ошибка при отправке: $e", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Ошибка при отправке: $e",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
     }
   }
 
@@ -732,13 +764,13 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
           'value': 'view',
           'label': 'Только просмотр',
           'icon': Icons.visibility,
-          'color': Colors.grey,
+          'color': kPrimaryColor,
         },
         {
           'value': 'save',
           'label': 'Просмотр + Скачивание',
           'icon': Icons.download,
-          'color': Colors.green,
+          'color': kAccentColor,
         },
       ];
       final currentValue = userPermissions[userId];
@@ -760,7 +792,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                 Text(
                   option['label'] as String,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black,
+                    color: isSelected ? Colors.white : kPrimaryColor,
                     fontSize: 13,
                   ),
                 ),
@@ -783,7 +815,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     return await showModalBottomSheet<List<Map<String, dynamic>>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: kBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -797,32 +829,41 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
               }
               return Column(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 8, bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 8, bottom: 8),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                  const Text(
+                  Text(
                     'Выберите пользователей и права',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimaryColor),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: TextField(
                       controller: searchController,
+                      style: TextStyle(color: kPrimaryColor),
                       decoration: InputDecoration(
                         hintText: 'Введите ник или email для поиска',
-                        prefixIcon: const Icon(Icons.search),
+                        hintStyle: TextStyle(color: kPrimaryColor.withOpacity(0.6)),
+                        prefixIcon: Icon(Icons.search, color: kPrimaryColor),
                         contentPadding: const EdgeInsets.symmetric(
                           vertical: 12,
                           horizontal: 16,
                         ),
-                        border: OutlineInputBorder(
+                        enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: kPrimaryColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: kAccentColor, width: 2),
                         ),
                       ),
                       onChanged: (val) {
@@ -837,7 +878,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                         ? Center(
                             child: Text(
                               "Введите ник или email для поиска",
-                              style: TextStyle(color: Colors.grey[600]),
+                              style: TextStyle(color: kPrimaryColor.withOpacity(0.7)),
                             ),
                           )
                         : ListView.builder(
@@ -855,13 +896,13 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                                 ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: kPrimaryColor.withOpacity(0.3)),
                                 ),
                                 child: ListTile(
-                                  tileColor: isSelected
-                                      ? Colors.blue.withOpacity(0.1)
-                                      : null,
+                                  tileColor: isSelected ? kAccentColor.withOpacity(0.1) : null,
                                   leading: Checkbox(
                                     value: isSelected,
+                                    activeColor: kAccentColor,
                                     onChanged: (bool? selected) {
                                       setStateModal(() {
                                         if (selected == true) {
@@ -875,14 +916,14 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                                   ),
                                   title: Text(
                                     user['displayName'] ?? 'Неизвестный',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: kPrimaryColor),
                                   ),
                                   subtitle: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         user['email'] ?? '',
-                                        style: const TextStyle(fontSize: 12),
+                                        style: TextStyle(fontSize: 12, color: kPrimaryColor),
                                       ),
                                       const SizedBox(height: 4),
                                       if (isSelected)
@@ -906,15 +947,21 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(context, null),
-                            child: const Text(
+                            child: Text(
                               'Отмена',
-                              style: TextStyle(fontSize: 16),
+                              style: TextStyle(fontSize: 16, color: kPrimaryColor),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kAccentColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
                             onPressed: () {
                               final result = userPermissions.entries.map((e) {
                                 return {
@@ -1010,15 +1057,18 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Недостаточно прав"),
-          content: const Text(
+          backgroundColor: kBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text("Недостаточно прав", style: TextStyle(color: kPrimaryColor, fontWeight: FontWeight.bold)),
+          content: Text(
             "У вас нет разрешения на выполнение этого действия. "
             "Только владелец или пользователь с правом 'Просмотр и скачивание' могут это делать.",
+            style: TextStyle(color: kPrimaryColor),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
+              child: Text("OK", style: TextStyle(color: kAccentColor)),
             ),
           ],
         );
@@ -1031,6 +1081,9 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
         content: Row(
           children: [
             Icon(icon, color: Colors.white),
@@ -1038,9 +1091,6 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
             Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -1065,7 +1115,7 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                   padding: const EdgeInsets.all(16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+                      colors: [kAccentColor, kPrimaryColor],
                     ),
                   ),
                   child: const Icon(
@@ -1112,30 +1162,33 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
     return Stack(
       children: [
         Scaffold(
+          backgroundColor: kBackgroundColor,
           extendBodyBehindAppBar: true,
           appBar: AppBar(
-            backgroundColor: Colors.black.withOpacity(0.3),
+            backgroundColor: kAppBarColor.withOpacity(0.9),
             elevation: 0,
+            title: Text("Просмотр фото", style: TextStyle(color: Colors.white)),
+            iconTheme: const IconThemeData(color: Colors.white),
             actions: [
               IconButton(
-                icon: const Icon(Icons.edit),
+                icon: Icon(Icons.edit, color: Colors.white),
                 tooltip: "Редактировать",
                 onPressed: _openPhotoEditor,
               ),
               if (currentPhoto is Map<String, dynamic>)
                 IconButton(
-                  icon: const Icon(Icons.save_alt),
+                  icon: Icon(Icons.save_alt, color: Colors.white),
                   tooltip: "Сохранить на устройство",
                   onPressed: canSave ? _onPressSave : _showNoAccessDialog,
                 ),
               if (currentPhoto is AssetEntity)
                 IconButton(
-                  icon: const Icon(Icons.cloud_upload),
+                  icon: Icon(Icons.cloud_upload, color: Colors.white),
                   tooltip: "Загрузить на сервер",
                   onPressed: _onPressUpload,
                 ),
               IconButton(
-                icon: const Icon(Icons.delete),
+                icon: Icon(Icons.delete, color: Colors.white),
                 tooltip: "Удалить",
                 onPressed: canSave ? _onPressDelete : _showNoAccessDialog,
               ),
@@ -1146,27 +1199,22 @@ class _PhotoViewScreenState extends State<PhotoViewScreen>
                 firestore: _firestore,
               ),
               IconButton(
-                icon: const Icon(Icons.location_on),
+                icon: Icon(Icons.location_on, color: Colors.white),
                 tooltip: "Обновить геолокацию",
                 onPressed: canSave ? _showLocationPicker : _showNoAccessDialog,
               ),
               IconButton(
-                icon: const Icon(Icons.share),
+                icon: Icon(Icons.share, color: Colors.white),
                 tooltip: "Поделиться",
                 onPressed: canSave ? _onPressShare : _showNoAccessDialog,
               ),
             ],
           ),
           body: Container(
+            width: double.infinity,
+            height: double.infinity,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFF89CFFD),
-                  Color(0xFFB084CC),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: kBackgroundColor,
             ),
             child: SafeArea(
               child: Center(
@@ -1357,18 +1405,14 @@ class _FavoriteIconState extends State<FavoriteIcon> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 3),
         content: Row(
           children: [
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(message, style: const TextStyle(color: Colors.white)),
-            ),
+            Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -1378,7 +1422,7 @@ class _FavoriteIconState extends State<FavoriteIcon> {
     return IconButton(
       icon: Icon(
         _isFavorite ? Icons.star : Icons.star_border,
-        color: Colors.yellowAccent,
+        color: kAccentColor,
       ),
       tooltip: "Избранное",
       onPressed: _toggleFavorite,
