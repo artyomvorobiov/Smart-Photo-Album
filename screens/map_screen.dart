@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,8 +8,14 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 import 'package:trip/models/cluster.dart';
-import 'package:google_maps_cluster_manager/google_maps_cluster_manager.dart' as gmc;
+import 'package:google_maps_cluster_manager/google_maps_cluster_manager.dart'
+    as gmc;
 import 'package:trip/screens/photo_view_screen.dart';
+
+const Color kBackgroundColor = Color(0xFFF5EEDC);
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853);
 
 class MapScreen extends StatefulWidget {
   const MapScreen({Key? key}) : super(key: key);
@@ -36,61 +43,64 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadPhotoItemsAndInitClusterManager() async {
-  try {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      debugPrint("Пользователь не авторизован");
-      return;
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        debugPrint("Пользователь не авторизован");
+        return;
+      }
+      final snapshot =
+          await FirebaseFirestore.instance.collection('photos').get();
+      final List<PhotoItem> items = [];
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final lat = _toDouble(data['latitude']);
+        final lng = _toDouble(data['longitude']);
+        if (lat == 0 && lng == 0) continue;
+        final owner = data['owner'] != null
+            ? data['owner'] as Map<String, dynamic>
+            : null;
+        final sharedWith = data['sharedWith'] != null
+            ? data['sharedWith'] as Map<String, dynamic>
+            : null;
+        bool isOwner = owner != null && owner['uid'] == currentUser.uid;
+        bool isShared =
+            sharedWith != null && sharedWith.containsKey(currentUser.uid);
+        if (!isOwner && !isShared) continue;
+        items.add(
+          PhotoItem(
+            id: doc.id,
+            lat: lat,
+            lng: lng,
+            url: data['url'] ?? '',
+            tags: (data['tags'] ?? []).cast<String>(),
+            creationDate: data['creation_date'] ?? 'Неизвестно',
+            ocrText: data['ocrText'] ?? '',
+            owner: owner,
+            sharedWith: sharedWith,
+          ),
+        );
+      }
+      debugPrint("Loaded ${items.length} photo items");
+      _allPhotoItems = items;
+      setState(() {
+        _clusterManager = gmc.ClusterManager<PhotoItem>(
+          items,
+          _updateMarkers,
+          markerBuilder: _markerBuilder,
+        );
+      });
+    } catch (e, stackTrace) {
+      debugPrint("Error initializing cluster manager: $e");
+      debugPrint(stackTrace.toString());
     }
-
-    final snapshot =
-        await FirebaseFirestore.instance.collection('photos').get();
-    final List<PhotoItem> items = [];
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final lat = _toDouble(data['latitude']);
-      final lng = _toDouble(data['longitude']);
-      if (lat == 0 && lng == 0) continue;
-      final owner = data['owner'] != null ? data['owner'] as Map<String, dynamic> : null;
-      final sharedWith = data['sharedWith'] != null ? data['sharedWith'] as Map<String, dynamic> : null;
-      bool isOwner = owner != null && owner['uid'] == currentUser.uid;
-      bool isShared = sharedWith != null && sharedWith.containsKey(currentUser.uid);
-      if (!isOwner && !isShared) continue;
-
-      items.add(
-        PhotoItem(
-          id: doc.id,
-          lat: lat,
-          lng: lng,
-          url: data['url'] ?? '',
-          tags: (data['tags'] ?? []).cast<String>(),
-          creationDate: data['creation_date'] ?? 'Неизвестно',
-          ocrText: data['ocrText'] ?? '',
-          owner: owner,
-          sharedWith: sharedWith,
-        ),
-      );
-    }
-
-    debugPrint("Loaded ${items.length} photo items");
-    _allPhotoItems = items;
-
-    setState(() {
-      _clusterManager = gmc.ClusterManager<PhotoItem>(
-        items,
-        _updateMarkers,
-        markerBuilder: _markerBuilder,
-      );
-    });
-  } catch (e, stackTrace) {
-    debugPrint("Error initializing cluster manager: $e");
-    debugPrint(stackTrace.toString());
   }
-}
+
   double _toDouble(dynamic val) {
     if (val is num) return val.toDouble();
     return double.tryParse(val.toString()) ?? 0.0;
   }
+
   void _updateMarkers(Set<Marker> markers) {
     setState(() {
       _markers
@@ -103,11 +113,9 @@ class _MapScreenState extends State<MapScreen> {
     try {
       final typedCluster = cluster as gmc.Cluster<PhotoItem>;
       if (typedCluster.isMultiple) {
-        final allSameLocation = typedCluster.items
-            .map((e) => '${e.lat},${e.lng}')
-            .toSet()
-            .length == 1;
-
+        final allSameLocation =
+            typedCluster.items.map((e) => '${e.lat},${e.lng}').toSet().length ==
+                1;
         if (allSameLocation) {
           final icon = await _getClusterBitmap(typedCluster.count);
           return Marker(
@@ -125,8 +133,8 @@ class _MapScreenState extends State<MapScreen> {
             position: typedCluster.location,
             icon: bitmapDescriptor,
             onTap: () {
-              _mapController.animateCamera(
-                  CameraUpdate.zoomTo(_currentZoom + 2));
+              _mapController
+                  .animateCamera(CameraUpdate.zoomTo(_currentZoom + 2));
             },
           );
         }
@@ -161,8 +169,7 @@ class _MapScreenState extends State<MapScreen> {
           height: screenHeight * 0.7,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.2),
@@ -185,14 +192,12 @@ class _MapScreenState extends State<MapScreen> {
               const SizedBox(height: 8),
               const Text(
                 "Выберите фотографию",
-                style:
-                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Expanded(
                 child: GridView.builder(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
@@ -201,40 +206,40 @@ class _MapScreenState extends State<MapScreen> {
                   itemBuilder: (context, index) {
                     final photo = items[index];
                     return GestureDetector(
-                     onTap: () {
-  Navigator.pop(context);
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => PhotoViewScreen.multiple(
-        photoList: items.map((photo) => {
-          'url': photo.url,
-          'tags': photo.tags,
-          'id': photo.id,
-          'creation_date': photo.creationDate,
-          'ocrText': photo.ocrText,
-          'owner': photo.owner,
-          'sharedWith': photo.sharedWith,
-        }).toList(),
-        initialIndex: index,
-      ),
-    ),
-  );
-},
-
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PhotoViewScreen.multiple(
+                              photoList: items
+                                  .map((photo) => {
+                                        'url': photo.url,
+                                        'tags': photo.tags,
+                                        'id': photo.id,
+                                        'creation_date': photo.creationDate,
+                                        'ocrText': photo.ocrText,
+                                        'owner': photo.owner,
+                                        'sharedWith': photo.sharedWith,
+                                      })
+                                  .toList(),
+                              initialIndex: index,
+                            ),
+                          ),
+                        );
+                      },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: Image.network(
                           photo.url,
                           fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stackTrace) => Container(
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
                             color: Colors.grey[300],
                             child: Icon(Icons.broken_image,
                                 color: Colors.grey[700], size: 40),
                           ),
-                          loadingBuilder:
-                              (context, child, progress) {
+                          loadingBuilder: (context, child, progress) {
                             if (progress == null) return child;
                             return Container(
                               color: Colors.grey[300],
@@ -253,8 +258,7 @@ class _MapScreenState extends State<MapScreen> {
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: () => Navigator.pop(context),
                 child: const Text("Закрыть"),
@@ -265,6 +269,7 @@ class _MapScreenState extends State<MapScreen> {
       },
     );
   }
+
   Future<BitmapDescriptor> _getClusterBitmap(int count) async {
     if (_clusterIconCache.containsKey(count)) {
       return _clusterIconCache[count]!;
@@ -272,14 +277,11 @@ class _MapScreenState extends State<MapScreen> {
     const int size = 120;
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(recorder);
-
-    final Paint paint = Paint()..color = Colors.deepPurpleAccent;
+    final Paint paint = Paint()
+      ..color = kAccentColor; 
     final double radius = size / 2;
     canvas.drawCircle(Offset(radius, radius), radius, paint);
-
-    final textPainter = TextPainter(
-      textDirection: TextDirection.ltr,
-    );
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
     textPainter.text = TextSpan(
       text: count.toString(),
       style: const TextStyle(
@@ -291,22 +293,18 @@ class _MapScreenState extends State<MapScreen> {
     textPainter.layout();
     textPainter.paint(
       canvas,
-      Offset(
-        radius - textPainter.width / 2,
-        radius - textPainter.height / 2,
-      ),
+      Offset(radius - textPainter.width / 2, radius - textPainter.height / 2),
     );
-
     final picture = recorder.endRecording();
     final ui.Image image = await picture.toImage(size, size);
     final ByteData? byteData =
         await image.toByteData(format: ui.ImageByteFormat.png);
     final Uint8List pngBytes = byteData!.buffer.asUint8List();
-
     final descriptor = BitmapDescriptor.fromBytes(pngBytes);
     _clusterIconCache[count] = descriptor;
     return descriptor;
   }
+
   Future<BitmapDescriptor> _getPhotoBitmap(String imageUrl,
       {int width = 120, int height = 120}) async {
     if (imageUrl.isEmpty) {
@@ -327,10 +325,9 @@ class _MapScreenState extends State<MapScreen> {
         targetWidth: width,
         targetHeight: height,
       );
-      final ui.FrameInfo frameInfo =
-          await markerImageCodec.getNextFrame();
-      final byteData = await frameInfo.image
-          .toByteData(format: ui.ImageByteFormat.png);
+      final ui.FrameInfo frameInfo = await markerImageCodec.getNextFrame();
+      final ByteData? byteData =
+          await frameInfo.image.toByteData(format: ui.ImageByteFormat.png);
       final resizedBytes = byteData!.buffer.asUint8List();
       final descriptor = BitmapDescriptor.fromBytes(resizedBytes);
       _photoIconCache[imageUrl] = descriptor;
@@ -352,8 +349,7 @@ class _MapScreenState extends State<MapScreen> {
           height: screenHeight * 0.7,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.2),
@@ -378,25 +374,22 @@ class _MapScreenState extends State<MapScreen> {
               ),
               const SizedBox(height: 16),
               GestureDetector(
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PhotoViewScreen.server(
-                        serverPhoto: {
-  'url': photo.url,
-  'tags': photo.tags,
-  'id': photo.id,
-  'creation_date': photo.creationDate,
-  'ocrText': photo.ocrText,
-  'owner': photo.owner,        
-  'sharedWith': photo.sharedWith,  
+                onTap: () async {
+  Navigator.pop(context);
+  final doc = await FirebaseFirestore.instance
+      .collection('photos')
+      .doc(photo.id)
+      .get();
+  final data = doc.data();
+  if (data != null) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PhotoViewScreen.server(serverPhoto: data),
+      ),
+    );
+  }
 },
-                      ),
-                    ),
-                  );
-                },
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
@@ -409,14 +402,10 @@ class _MapScreenState extends State<MapScreen> {
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Container(
                         color: Colors.grey[300],
-                        child: Icon(
-                          Icons.broken_image,
-                          color: Colors.grey[700],
-                          size: 50,
-                        ),
+                        child: Icon(Icons.broken_image,
+                            color: Colors.grey[700], size: 50),
                       ),
-                      loadingBuilder:
-                          (context, child, loadingProgress) {
+                      loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Center(child: CircularProgressIndicator());
                       },
@@ -427,8 +416,7 @@ class _MapScreenState extends State<MapScreen> {
               const SizedBox(height: 16),
               Text(
                 "Фотография",
-                style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
@@ -436,12 +424,12 @@ class _MapScreenState extends State<MapScreen> {
                 String formattedDate = photo.creationDate;
                 try {
                   final dt = DateTime.parse(photo.creationDate);
-                  formattedDate = intl.DateFormat('dd MMMM yyyy', 'ru_RU')
-                      .format(dt);
+                  formattedDate =
+                      intl.DateFormat('dd MMMM yyyy', 'ru_RU').format(dt);
                 } catch (e) {}
                 return Text(
                   "Дата создания: $formattedDate",
-                  style: TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 16),
                   textAlign: TextAlign.center,
                 );
               }),
@@ -462,15 +450,15 @@ class _MapScreenState extends State<MapScreen> {
       },
     );
   }
+
   void _updateSearch(String query) {
     setState(() {
       _searchQuery = query;
       final lowerQuery = query.toLowerCase();
       List<PhotoItem> filtered = _allPhotoItems.where((item) {
-        bool tagMatch = item.tags
-            .any((tag) => tag.toLowerCase().contains(lowerQuery));
-        bool textMatch =
-            item.ocrText.toLowerCase().contains(lowerQuery);
+        bool tagMatch =
+            item.tags.any((tag) => tag.toLowerCase().contains(lowerQuery));
+        bool textMatch = item.ocrText.toLowerCase().contains(lowerQuery);
         return tagMatch || textMatch;
       }).toList();
       _clusterManager?.setItems(filtered);
@@ -484,7 +472,7 @@ class _MapScreenState extends State<MapScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
+            colors: [kBackgroundColor, kPrimaryColor],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -531,59 +519,59 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget _buildCustomAppBar() {
-  return Container(
-    height: 60,
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    color: Colors.black.withOpacity(0.1),
-    child: Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        if (_isSearching)
-          Expanded(
-            child: TextField(
-              autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-              decoration: const InputDecoration(
-                hintText: 'Поиск по тегам и тексту...',
-                hintStyle: TextStyle(color: Colors.white70),
-                border: InputBorder.none,
-              ),
-              onChanged: _updateSearch,
-            ),
-          )
-        else
-          Expanded(
-            child: Text(
-              "Фотографии на карте",
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-              textAlign: TextAlign.center,
-            ),
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      color: kAppBarColor.withOpacity(0.95),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: kBackgroundColor),
+            onPressed: () => Navigator.pop(context),
           ),
-        IconButton(
-          icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
-          onPressed: () {
-            setState(() {
-              if (_isSearching) {
-                _isSearching = false;
-                _searchQuery = '';
-                _clusterManager?.setItems(_allPhotoItems);
-                _clusterManager?.updateMap();
-              } else {
-                _isSearching = true;
-              }
-            });
-          },
-        ),
-      ],
-    ),
-  );
-}
-
+          if (_isSearching)
+            Expanded(
+              child: TextField(
+                autofocus: true,
+                style: const TextStyle(color: kBackgroundColor, fontSize: 18),
+                decoration: const InputDecoration(
+                  hintText: 'Поиск по тегам и тексту...',
+                  hintStyle: TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                ),
+                onChanged: _updateSearch,
+              ),
+            )
+          else
+            Expanded(
+              child: Text(
+                "Фотографии на карте",
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: kBackgroundColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search,
+                color: kBackgroundColor),
+            onPressed: () {
+              setState(() {
+                if (_isSearching) {
+                  _isSearching = false;
+                  _searchQuery = '';
+                  _clusterManager?.setItems(_allPhotoItems);
+                  _clusterManager?.updateMap();
+                } else {
+                  _isSearching = true;
+                }
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
