@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:trip/screens/gallery_screen.dart';
 import 'package:trip/screens/user_search.dart';
 import 'package:trip/services/photo_service.dart';
+
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
 
 class FolderScreen extends StatefulWidget {
   @override
@@ -15,19 +21,18 @@ class _FolderScreenState extends State<FolderScreen>
     with SingleTickerProviderStateMixin {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   final Map<String, String> _nicknameCache = {};
 
   bool _isProcessing = false;
-
   late AnimationController _loadingController;
 
   @override
   void initState() {
     super.initState();
-    _loadingController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 2))
-          ..repeat();
+    _loadingController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
   }
 
   @override
@@ -37,9 +42,7 @@ class _FolderScreenState extends State<FolderScreen>
   }
 
   Future<String> _fetchNickname(String uid) async {
-    if (_nicknameCache.containsKey(uid)) {
-      return _nicknameCache[uid]!;
-    }
+    if (_nicknameCache.containsKey(uid)) return _nicknameCache[uid]!;
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
       final data = doc.data();
@@ -52,55 +55,51 @@ class _FolderScreenState extends State<FolderScreen>
   }
 
   Widget _buildPermissionIcons(Map<String, dynamic> perms) {
-  final List<Widget> iconWidgets = [];
-
-  if (perms['addPhotos'] == true) {
-    iconWidgets.add(
-      Tooltip(
-        message: "Добавление фото",
-        child: Icon(Icons.add_a_photo, color: Colors.green),
-      ),
+    final List<Widget> iconWidgets = [];
+    if (perms['addPhotos'] == true) {
+      iconWidgets.add(
+        Tooltip(
+          message: "Добавление фото",
+          child: Icon(Icons.add_a_photo, color: Colors.green, size: 18),
+        ),
+      );
+    }
+    if (perms['deleteFolder'] == true) {
+      iconWidgets.add(
+        Tooltip(
+          message: "Удаление папки",
+          child: Icon(Icons.delete_forever, color: Colors.red, size: 18),
+        ),
+      );
+    }
+    if (perms['deletePhotos'] == true) {
+      iconWidgets.add(
+        Tooltip(
+          message: "Удаление фото",
+          child: Icon(Icons.delete, color: Colors.orange, size: 18),
+        ),
+      );
+    }
+    if (perms['autoSharePhotos'] == true) {
+      iconWidgets.add(
+        Tooltip(
+          message: "Автоподелиться",
+          child: Icon(Icons.autorenew, color: Colors.purple, size: 18),
+        ),
+      );
+    }
+    if (iconWidgets.isEmpty) {
+      return const Text(
+        "Только просмотр",
+        style: TextStyle(color: Colors.grey, fontSize: 12),
+      );
+    }
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: iconWidgets,
     );
   }
-  if (perms['deleteFolder'] == true) {
-    iconWidgets.add(
-      Tooltip(
-        message: "Удаление папки",
-        child: Icon(Icons.delete_forever, color: Colors.red),
-      ),
-    );
-  }
-  if (perms['deletePhotos'] == true) {
-    iconWidgets.add(
-      Tooltip(
-        message: "Удаление фото",
-        child: Icon(Icons.delete, color: Colors.orange),
-      ),
-    );
-  }
-  if (perms['autoSharePhotos'] == true) {
-    iconWidgets.add(
-      Tooltip(
-        message: "Автоподелиться",
-        child: Icon(Icons.autorenew, color: Colors.purple),
-      ),
-    );
-  }
-
-  if (iconWidgets.isEmpty) {
-    return const Text(
-      "Только просмотр",
-      style: TextStyle(color: Colors.grey),
-    );
-  }
-
-  return Wrap(
-    spacing: 6,
-    runSpacing: 4,
-    children: iconWidgets,
-  );
-}
-
 
   void _showCustomMessage(String message,
       {IconData icon = Icons.check_circle_outline,
@@ -113,13 +112,12 @@ class _FolderScreenState extends State<FolderScreen>
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-                child: Text(message,
-                    style: const TextStyle(color: Colors.white))),
+                child:
+                    Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -145,7 +143,7 @@ class _FolderScreenState extends State<FolderScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+                    colors: [kAccentColor, kPrimaryColor],
                   ),
                 ),
                 child: const Icon(
@@ -174,7 +172,10 @@ class _FolderScreenState extends State<FolderScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Создать папку"),
+        backgroundColor: kBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title:
+            const Text("Создать папку", style: TextStyle(color: kPrimaryColor)),
         content: TextField(
           controller: _nameController,
           decoration: const InputDecoration(
@@ -188,12 +189,14 @@ class _FolderScreenState extends State<FolderScreen>
             child: const Text("Отмена"),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kAccentColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
               if (_nameController.text.isNotEmpty) {
                 Navigator.pop(context);
-                setState(() {
-                  _isProcessing = true;
-                });
+                setState(() => _isProcessing = true);
                 final currentUser = _auth.currentUser;
                 if (currentUser != null) {
                   await _firestore.collection('folders').add({
@@ -203,9 +206,7 @@ class _FolderScreenState extends State<FolderScreen>
                     'createdAt': FieldValue.serverTimestamp(),
                     'sharedWith': {}
                   });
-                  setState(() {
-                    _isProcessing = false;
-                  });
+                  setState(() => _isProcessing = false);
                   _showCustomMessage("Папка успешно создана!");
                 }
               }
@@ -217,11 +218,8 @@ class _FolderScreenState extends State<FolderScreen>
     );
   }
 
-  Future<void> _confirmDeleteFolder(
-    Map<String, dynamic> folder,
-    bool isOwner,
-    Map<String, dynamic>? permissions,
-  ) async {
+  Future<void> _confirmDeleteFolder(Map<String, dynamic> folder, bool isOwner,
+      Map<String, dynamic>? permissions) async {
     if (!isOwner && (permissions?['deleteFolder'] != true)) {
       _showCustomMessage("У вас нет прав на удаление этой папки",
           icon: Icons.error_outline, backgroundColor: Colors.redAccent);
@@ -230,15 +228,22 @@ class _FolderScreenState extends State<FolderScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Удалить папку?"),
-        content: Text(
-            'Вы уверены, что хотите удалить папку "${folder['name']}"?'),
+        backgroundColor: kBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text("Удалить папку?",
+            style: TextStyle(color: kPrimaryColor)),
+        content:
+            Text('Вы уверены, что хотите удалить папку "${folder['name']}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text("Отмена"),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kAccentColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
             onPressed: () => Navigator.pop(context, true),
             child: const Text("Удалить"),
           ),
@@ -246,13 +251,9 @@ class _FolderScreenState extends State<FolderScreen>
       ),
     );
     if (confirmed == true) {
-      setState(() {
-        _isProcessing = true;
-      });
+      setState(() => _isProcessing = true);
       await _firestore.collection('folders').doc(folder['id']).delete();
-      setState(() {
-        _isProcessing = false;
-      });
+      setState(() => _isProcessing = false);
       _showCustomMessage("Папка удалена");
     }
   }
@@ -269,67 +270,59 @@ class _FolderScreenState extends State<FolderScreen>
     );
   }
 
-Future<void> _selectPhotosForFolder(
-  Map<String, dynamic> folder,
-  bool isOwner,
-  Map<String, dynamic>? permissions,
-) async {
-  if (!isOwner && (permissions?['addPhotos'] != true)) {
-    _showCustomMessage("У вас нет прав на добавление фотографий",
-        icon: Icons.error_outline, backgroundColor: Colors.redAccent);
-    return;
-  }
-  final result = await Navigator.push<List<dynamic>?>(context,
-      MaterialPageRoute(builder: (context) => GalleryScreen(
-        multiSelectMode: true,
-        source: "folder_selection",
-      )));
-  if (result != null) {
-    final selectedPhotoIds = result.map((photoItem) {
-      if (photoItem['type'] == 'server') {
-        return photoItem['photo']['id'];
-      } else if (photoItem['type'] == 'local') {
-        return photoItem['photo'].title;
-      }
-      return "";
-    }).where((id) => id.isNotEmpty).toList();
-
-    setState(() {
-      _isProcessing = true;
-    });
-    await _firestore.collection('folders').doc(folder['id']).update({
-      'photos': FieldValue.arrayUnion(selectedPhotoIds),
-    });
-    final folderSnapshot = await _firestore.collection('folders').doc(folder['id']).get();
-    final folderData = folderSnapshot.data();
-    final sharedWith = folderData?['sharedWith'] ?? {};
-    for (String photoId in selectedPhotoIds) {
-      final querySnapshot = await _firestore
-    .collection('photos')
-    .where('id', isEqualTo: photoId)
-    .limit(1)
-    .get();
-if (querySnapshot.docs.isNotEmpty) {
-  final photoDoc = querySnapshot.docs.first;
-      if (photoDoc.exists) {
-        await photoDoc.reference.update({
-          'folderIds': FieldValue.arrayUnion([folder['id']]),
-          'folderShares.${folder['id']}': sharedWith,
-        });
-      }
-}
+  Future<void> _selectPhotosForFolder(Map<String, dynamic> folder, bool isOwner,
+      Map<String, dynamic>? permissions) async {
+    if (!isOwner && (permissions?['addPhotos'] != true)) {
+      _showCustomMessage("У вас нет прав на добавление фотографий",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      return;
     }
-    await PhotoService().updatePhotosSharingForFolder(folder['id'], sharedWith);
-    setState(() {
-      _isProcessing = false;
-    });
-    _showCustomMessage("Фото успешно добавлены и доступ обновлён");
+    final result = await Navigator.push<List<dynamic>?>(
+        context,
+        MaterialPageRoute(
+            builder: (context) => GalleryScreen(
+                  multiSelectMode: true,
+                  source: "folder_selection",
+                )));
+    if (result != null) {
+      final selectedPhotoIds = result
+          .map((photoItem) {
+            if (photoItem['type'] == 'server') {
+              return photoItem['photo']['id'];
+            } else if (photoItem['type'] == 'local') {
+              return photoItem['photo'].title;
+            }
+            return "";
+          })
+          .where((id) => id.isNotEmpty)
+          .toList();
+
+      setState(() => _isProcessing = true);
+      await _firestore.collection('folders').doc(folder['id']).update({
+        'photos': FieldValue.arrayUnion(selectedPhotoIds),
+      });
+      for (String photoId in selectedPhotoIds) {
+        final querySnapshot = await _firestore
+            .collection('photos')
+            .where('id', isEqualTo: photoId)
+            .limit(1)
+            .get();
+        if (querySnapshot.docs.isNotEmpty) {
+          final photoDoc = querySnapshot.docs.first;
+          if (photoDoc.exists) {
+            await photoDoc.reference.update({
+              'folderIds': FieldValue.arrayUnion([folder['id']]),
+              'folderShares.${folder['id']}': folder['sharedWith'] ?? {},
+            });
+          }
+        }
+      }
+      await PhotoService().updatePhotosSharingForFolder(
+          folder['id'], folder['sharedWith'] ?? {});
+      setState(() => _isProcessing = false);
+      _showCustomMessage("Фото успешно добавлены и доступ обновлён");
+    }
   }
-}
-
-
-
-
 
   Future<void> _shareFolder(Map<String, dynamic> folder) async {
     final currentUser = _auth.currentUser;
@@ -342,264 +335,285 @@ if (querySnapshot.docs.isNotEmpty) {
   }
 
   Future<void> _editSharedUsers(Map<String, dynamic> folder) async {
-  Map<String, dynamic> currentSharedWith = {};
-  if (folder['sharedWith'] != null) {
-    currentSharedWith = Map<String, dynamic>.from(folder['sharedWith']);
-  }
-  final result = await showDialog<Map<String, dynamic>?>(
-    context: context,
-    builder: (context) {
-      return StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            title: const Text("Управление доступом"),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    "Серверные фотографии будут автоматически отправляться тем пользователям, у которых включена функция 'Автоподелиться'.",
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
-                    textAlign: TextAlign.center,
+    Map<String, dynamic> currentSharedWith = {};
+    if (folder['sharedWith'] != null) {
+      currentSharedWith = Map<String, dynamic>.from(folder['sharedWith']);
+    }
+    final result = await showDialog<Map<String, dynamic>?>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return AlertDialog(
+                backgroundColor: kBackgroundColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                title: const Text("Управление доступом",
+                    style: TextStyle(
+                        color: kPrimaryColor, fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Серверные фотографии будут автоматически отправляться тем пользователям, у которых включена функция 'Автоподелиться'.",
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      currentSharedWith.isEmpty
+                          ? const Text(
+                              "Папка пока не поделена.\nНажмите 'Добавить пользователя' для настройки доступа.",
+                              textAlign: TextAlign.center,
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 200),
+                              child: ListView(
+                                shrinkWrap: true,
+                                children: currentSharedWith.entries
+                                    .where((entry) =>
+                                        entry.key != _auth.currentUser!.uid &&
+                                        entry.key != folder['owner'])
+                                    .map((entry) {
+                                  final uid = entry.key;
+                                  final perms =
+                                      Map<String, dynamic>.from(entry.value);
+                                  return FutureBuilder<String>(
+                                    future: _fetchNickname(uid),
+                                    builder: (context, snap) {
+                                      if (!snap.hasData) {
+                                        return ListTile(
+                                          title: Text("Загрузка… ($uid)"),
+                                        );
+                                      }
+                                      final nickname = snap.data!;
+                                      return ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 0),
+                                        title: Text(nickname),
+                                        subtitle: _buildPermissionIcons(perms),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.edit,
+                                                  color: kPrimaryColor),
+                                              tooltip: "Изменить права",
+                                              onPressed: () async {
+                                                final newPerms =
+                                                    await _editSinglePermissionChipBased(
+                                                        uid, perms);
+                                                if (newPerms != null) {
+                                                  setStateDialog(() {
+                                                    currentSharedWith[uid] =
+                                                        newPerms;
+                                                  });
+                                                }
+                                              },
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete,
+                                                  color: Colors.red),
+                                              tooltip: "Удалить пользователя",
+                                              onPressed: () {
+                                                setStateDialog(() {
+                                                  currentSharedWith.remove(uid);
+                                                });
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: kAccentColor,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12))),
+                        onPressed: () async {
+                          final currentUserUid = _auth.currentUser?.uid;
+                          final excludedUserIds = <String>[
+                            if (currentUserUid != null) currentUserUid,
+                            ...currentSharedWith.keys,
+                          ];
+                          final resultUser =
+                              await showSearch<Map<String, dynamic>?>(
+                                  context: context,
+                                  delegate: UserSearchDelegate(
+                                      excludedUserIds: excludedUserIds));
+                          if (resultUser != null && resultUser['uid'] != null) {
+                            final newUid = resultUser['uid'] as String;
+                            setStateDialog(() {
+                              currentSharedWith[newUid] = {
+                                'addPhotos': true,
+                                'deleteFolder': false,
+                                'deletePhotos': true,
+                                'autoSharePhotos': true,
+                              };
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.person_add),
+                        label: const Text("Добавить пользователя"),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  currentSharedWith.isEmpty
-                      ? const Text(
-                          "Папка пока не поделена.\nНажмите 'Добавить пользователя' для настройки доступа.",
-                          textAlign: TextAlign.center,
-                        )
-                      : ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 200),
-                          child: ListView(
-                            shrinkWrap: true,
-                            children: currentSharedWith.entries
-  .where((entry) => entry.key != _auth.currentUser!.uid && entry.key != folder['owner'])
-  .map((entry) {
-    final uid = entry.key;
-    final perms = Map<String, dynamic>.from(entry.value);
-    return FutureBuilder<String>(
-      future: _fetchNickname(uid),
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return ListTile(
-            title: Text("Загрузка… ($uid)"),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, null),
+                    child: const Text("Отмена"),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: kAccentColor,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    onPressed: () => Navigator.pop(context, currentSharedWith),
+                    child: const Text("Сохранить"),
+                  ),
+                ],
+              );
+            },
           );
-        }
-        final nickname = snap.data!;
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 0),
-          title: Text(nickname),
-          subtitle: _buildPermissionIcons(perms),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit, color: Colors.blue),
-                tooltip: "Изменить права",
-                onPressed: () async {
-                  final newPerms =
-                      await _editSinglePermissionChipBased(uid, perms);
-                  if (newPerms != null) {
-                    setStateDialog(() {
-                      currentSharedWith[uid] = newPerms;
-                    });
-                  }
-                },
+        });
+    if (result != null) {
+      setState(() => _isProcessing = true);
+      await _firestore
+          .collection('folders')
+          .doc(folder['id'])
+          .update({'sharedWith': result});
+      await PhotoService().updatePhotosSharingForFolder(folder['id'], result);
+      setState(() => _isProcessing = false);
+      _showCustomMessage("Доступ успешно обновлён");
+    }
+  }
+
+  Future<Map<String, dynamic>?> _editSinglePermissionChipBased(
+      String uid, Map<String, dynamic> perms) async {
+    bool addPhotos = perms['addPhotos'] ?? false;
+    bool deleteFolder = perms['deleteFolder'] ?? false;
+    bool deletePhotos = perms['deletePhotos'] ?? false;
+    bool autoSharePhotos = perms['autoSharePhotos'] ?? false;
+
+    final List<Map<String, dynamic>> permissionOptions = [
+      {
+        'key': 'addPhotos',
+        'label': 'Добавление фото',
+        'icon': Icons.add_a_photo,
+        'color': Colors.green,
+      },
+      {
+        'key': 'deleteFolder',
+        'label': 'Удаление папки',
+        'icon': Icons.delete_forever,
+        'color': Colors.red,
+      },
+      {
+        'key': 'deletePhotos',
+        'label': 'Удаление фото',
+        'icon': Icons.delete,
+        'color': Colors.orange,
+      },
+      {
+        'key': 'autoSharePhotos',
+        'label': 'Автоподелиться',
+        'icon': Icons.autorenew,
+        'color': Colors.purple,
+      },
+    ];
+
+    final localPerms = <String, bool>{
+      'addPhotos': addPhotos,
+      'deleteFolder': deleteFolder,
+      'deletePhotos': deletePhotos,
+      'autoSharePhotos': autoSharePhotos,
+    };
+
+    final nickname = await _fetchNickname(uid);
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: kBackgroundColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                tooltip: "Удалить пользователя",
-                onPressed: () {
-                  setStateDialog(() {
-                    currentSharedWith.remove(uid);
-                  });
-                },
+              title: Text(
+                "Разрешения для $nickname",
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: kPrimaryColor),
               ),
-            ],
-          ),
+              content: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: permissionOptions.map((option) {
+                    final key = option['key'] as String;
+                    final label = option['label'] as String;
+                    final icon = option['icon'] as IconData;
+                    final color = option['color'] as Color;
+                    final isSelected = localPerms[key] ?? false;
+
+                    return FilterChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, color: color, size: 18),
+                          const SizedBox(width: 4),
+                          Text(label, style: const TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setStateDialog(() {
+                          localPerms[key] = selected;
+                        });
+                      },
+                      selectedColor: color.withOpacity(0.2),
+                      checkmarkColor: color,
+                      showCheckmark: true,
+                      backgroundColor: Colors.grey[200],
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text("Отмена"),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kAccentColor,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  onPressed: () {
+                    final newPerms = {
+                      'addPhotos': localPerms['addPhotos'] ?? false,
+                      'deleteFolder': localPerms['deleteFolder'] ?? false,
+                      'deletePhotos': localPerms['deletePhotos'] ?? false,
+                      'autoSharePhotos': localPerms['autoSharePhotos'] ?? false,
+                    };
+                    Navigator.pop(context, newPerms);
+                  },
+                  child: const Text("Сохранить"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
-  }).toList(),
-                          ),
-                        ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final currentUserUid = _auth.currentUser?.uid;
-                      final excludedUserIds = <String>[
-                        if (currentUserUid != null) currentUserUid,
-                        ...currentSharedWith.keys,
-                      ];
-                      final resultUser = await showSearch<Map<String, dynamic>?>(
-                        context: context,
-                        delegate: UserSearchDelegate(excludedUserIds: excludedUserIds),
-                      );
-                      if (resultUser != null && resultUser['uid'] != null) {
-                        final newUid = resultUser['uid'] as String;
-                        setStateDialog(() {
-                          currentSharedWith[newUid] = {
-                            'addPhotos': true,
-                            'deleteFolder': false,
-                            'deletePhotos': true,
-                            'autoSharePhotos': true,
-                          };
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.person_add),
-                    label: const Text("Добавить пользователя"),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text("Отмена"),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, currentSharedWith),
-                child: const Text("Сохранить"),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-  if (result != null) {
-    setState(() {
-      _isProcessing = true;
-    });
-    await _firestore.collection('folders').doc(folder['id']).update({'sharedWith': result});
-    await PhotoService().updatePhotosSharingForFolder(folder['id'], result);
-    setState(() {
-      _isProcessing = false;
-    });
-    _showCustomMessage("Доступ успешно обновлён");
   }
-}
-
-
-
-  Future<Map<String, dynamic>?> _editSinglePermissionChipBased(
-  String uid,
-  Map<String, dynamic> perms,
-) async {
-  bool addPhotos = perms['addPhotos'] ?? false;
-  bool deleteFolder = perms['deleteFolder'] ?? false;
-  bool deletePhotos = perms['deletePhotos'] ?? false;
-  bool autoSharePhotos = perms['autoSharePhotos'] ?? false;
-
-  final List<Map<String, dynamic>> permissionOptions = [
-    {
-      'key': 'addPhotos',
-      'label': 'Добавление фото',
-      'icon': Icons.add_a_photo,
-      'color': Colors.green,
-    },
-    {
-      'key': 'deleteFolder',
-      'label': 'Удаление папки',
-      'icon': Icons.delete_forever,
-      'color': Colors.red,
-    },
-    {
-      'key': 'deletePhotos',
-      'label': 'Удаление фото',
-      'icon': Icons.delete,
-      'color': Colors.orange,
-    },
-    {
-      'key': 'autoSharePhotos',
-      'label': 'Автоподелиться',
-      'icon': Icons.autorenew,
-      'color': Colors.purple,
-    },
-  ];
-
-  final localPerms = <String, bool>{
-    'addPhotos': addPhotos,
-    'deleteFolder': deleteFolder,
-    'deletePhotos': deletePhotos,
-    'autoSharePhotos': autoSharePhotos,
-  };
-
-  final nickname = await _fetchNickname(uid);
-
-  return showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (context) {
-      return StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              "Разрешения для $nickname",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            content: SingleChildScrollView(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: permissionOptions.map((option) {
-                  final key = option['key'] as String;
-                  final label = option['label'] as String;
-                  final icon = option['icon'] as IconData;
-                  final color = option['color'] as Color;
-                  final isSelected = localPerms[key] ?? false;
-
-                  return FilterChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(icon, color: color, size: 18),
-                        const SizedBox(width: 4),
-                        Text(label, style: const TextStyle(fontSize: 13)),
-                      ],
-                    ),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setStateDialog(() {
-                        localPerms[key] = selected;
-                      });
-                    },
-                    selectedColor: color.withOpacity(0.2),
-                    checkmarkColor: color,
-                    showCheckmark: true,
-                    backgroundColor: Colors.grey[200],
-                  );
-                }).toList(),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text("Отмена"),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final newPerms = {
-                    'addPhotos': localPerms['addPhotos'] ?? false,
-                    'deleteFolder': localPerms['deleteFolder'] ?? false,
-                    'deletePhotos': localPerms['deletePhotos'] ?? false,
-                    'autoSharePhotos': localPerms['autoSharePhotos'] ?? false,
-                  };
-                  Navigator.pop(context, newPerms);
-                },
-                child: const Text("Сохранить"),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
-
 
   Stream<List<Map<String, dynamic>>> _folderStream() {
     final currentUser = _auth.currentUser;
@@ -622,6 +636,135 @@ if (querySnapshot.docs.isNotEmpty) {
     });
   }
 
+  Widget _buildFolderList(List<Map<String, dynamic>> folders) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: folders.length,
+      itemBuilder: (context, index) {
+        final folder = folders[index];
+        final currentUser = _auth.currentUser!;
+        final isOwner = folder['owner'] == currentUser.uid;
+        Map<String, dynamic>? permissions;
+        if (!isOwner && folder['sharedWith'] != null) {
+          permissions = folder['sharedWith'][currentUser.uid];
+        }
+        return Card(
+          color: kBackgroundColor,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: kPrimaryColor.withOpacity(0.5))),
+          elevation: 4,
+          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: () => _openFolder(folder['id'], folder['photos']),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: kAccentColor,
+                        radius: 24,
+                        child: const Icon(Icons.folder,
+                            size: 28, color: Colors.white),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              folder['name'],
+                              style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: kPrimaryColor),
+                            ),
+                            if (!isOwner)
+                              FutureBuilder<String>(
+                                future: _fetchNickname(folder['owner']),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Text(
+                                      "Загрузка владельца...",
+                                      style: TextStyle(
+                                          fontSize: 14, color: Colors.grey),
+                                    );
+                                  }
+                                  final ownerNickname =
+                                      snapshot.data ?? folder['owner'];
+                                  return Text(
+                                    "Владелец: $ownerNickname",
+                                    style: const TextStyle(
+                                        fontSize: 14, color: Colors.grey),
+                                  );
+                                },
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "${(folder['photos'] as List).length} фото" +
+                                  (isOwner ? "" : " (общая)"),
+                              style: const TextStyle(
+                                  fontSize: 14, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    if (isOwner)
+                      IconButton(
+                        icon: const Icon(Icons.share),
+                        color: kAccentColor,
+                        tooltip: "Управление доступом",
+                        onPressed: () => _shareFolder(folder),
+                      )
+                    else
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        color: kAccentColor,
+                        tooltip: "Настроить разрешения",
+                        onPressed: () async {
+                          await _editSharedUsers(folder);
+                        },
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      color: (isOwner || (permissions?['addPhotos'] == true))
+                          ? Colors.green
+                          : Colors.grey,
+                      tooltip: "Добавить фото",
+                      onPressed: () =>
+                          _selectPhotosForFolder(folder, isOwner, permissions),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      color: (isOwner || (permissions?['deleteFolder'] == true))
+                          ? Colors.red
+                          : Colors.grey,
+                      tooltip: "Удалить папку",
+                      onPressed: () =>
+                          _confirmDeleteFolder(folder, isOwner, permissions),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = _auth.currentUser;
@@ -633,15 +776,14 @@ if (querySnapshot.docs.isNotEmpty) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text("Папки", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black.withOpacity(0.1),
+        title: const Text("Папки", style: TextStyle(color: kBackgroundColor)),
+        backgroundColor: kAppBarColor,
         elevation: 0,
         actions: [
           IconButton(
-            icon:
-                const Icon(Icons.create_new_folder, color: Colors.white),
-            onPressed: _createFolder,
+            icon: const Icon(Icons.create_new_folder, color: kBackgroundColor),
             tooltip: "Создать папку",
+            onPressed: _createFolder,
           ),
         ],
       ),
@@ -650,7 +792,7 @@ if (querySnapshot.docs.isNotEmpty) {
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
+                colors: [kPrimaryColor, kAppBarColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -670,132 +812,15 @@ if (querySnapshot.docs.isNotEmpty) {
                   final folders = snapshot.data ?? [];
                   if (folders.isEmpty) {
                     return const Center(
-                      child: Text(
-                        "Нет папок",
-                        style:
-                            TextStyle(fontSize: 18, color: Colors.white),
-                      ),
+                      child: Text("Нет папок",
+                          style: TextStyle(fontSize: 18, color: kBackgroundColor)),
                     );
                   }
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: folders.length,
-                    itemBuilder: (context, index) {
-                      final folder = folders[index];
-                      final isOwner = folder['owner'] == currentUser.uid;
-                      Map<String, dynamic>? permissions;
-                      if (!isOwner && folder['sharedWith'] != null) {
-                        permissions = folder['sharedWith'][currentUser.uid];
-                      }
-                      return Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 4,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        child: ListTile(
-                          onTap: () =>
-                              _openFolder(folder['id'], folder['photos']),
-                          contentPadding: const EdgeInsets.symmetric(
-                              vertical: 12, horizontal: 16),
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.blueAccent,
-                            radius: 22,
-                            child: const Icon(Icons.folder,
-                                color: Colors.white, size: 20),
-                          ),
-                          title: Text(
-                            folder['name'],
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            "${(folder['photos'] as List).length} фото" +
-                                (isOwner ? "" : " (общая)"),
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_vert),
-                            onSelected: (value) async {
-                              switch (value) {
-                                case 'share':
-                                  await _shareFolder(folder);
-                                  break;
-                                case 'edit_permissions':
-                                  await _editSharedUsers(folder);
-                                  break;
-                                case 'add_photos':
-                                  _selectPhotosForFolder(
-                                      folder, isOwner, permissions);
-                                  break;
-                                case 'delete':
-                                  await _confirmDeleteFolder(
-                                      folder, isOwner, permissions);
-                                  break;
-                              }
-                            },
-                            itemBuilder: (context) {
-                              final items = <PopupMenuEntry<String>>[];
-                              if (isOwner) {
-                                items.add(
-                                  PopupMenuItem(
-                                    value: 'share',
-                                    child: ListTile(
-                                      leading: const Icon(Icons.share,
-                                          color: Colors.blue),
-                                      title: const Text("Поделиться и управлять"),
-                                    ),
-                                  ),
-                                );
-                              } else {
-                                items.add(
-                                  PopupMenuItem(
-                                    value: 'edit_permissions',
-                                    child: ListTile(
-                                      leading: const Icon(Icons.share,
-                                          color: Colors.blueGrey),
-                                      title: const Text("Настроить разрешения"),
-                                    ),
-                                  ),
-                                );
-                              }
-                              items.add(
-                                PopupMenuItem(
-                                  value: 'add_photos',
-                                  child: ListTile(
-                                    leading: Icon(
-                                      Icons.add,
-                                      color: (isOwner ||
-                                              (permissions?['addPhotos'] == true))
-                                          ? Colors.green
-                                          : Colors.grey,
-                                    ),
-                                    title: const Text("Добавить фото"),
-                                  ),
-                                ),
-                              );
-                              items.add(
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: ListTile(
-                                    leading: Icon(
-                                      Icons.delete,
-                                      color: (isOwner ||
-                                              (permissions?['deleteFolder'] ==
-                                                  true))
-                                          ? Colors.red
-                                          : Colors.grey,
-                                    ),
-                                    title: const Text("Удалить папку"),
-                                  ),
-                                ),
-                              );
-                              return items;
-                            },
-                          ),
-                        ),
-                      );
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      setState(() {}); 
                     },
+                    child: _buildFolderList(folders),
                   );
                 },
               ),
