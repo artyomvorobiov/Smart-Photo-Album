@@ -9,29 +9,40 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:translator/translator.dart';
 import 'package:intl/intl.dart';
 import 'package:trip/screens/create_album_screen.dart';
-import 'package:trip/models/photo_tile.dart'; 
+import 'package:trip/models/photo_tile.dart';
 import 'package:trip/screens/photo_view_screen.dart';
 import 'package:trip/screens/tags_screen.dart';
 import 'package:trip/services/photo_service.dart';
 import 'package:trip/services/profile_service.dart';
+
 class MergeAndGroupPhotosParams {
   final List<AssetEntity> localPhotos;
   final List<dynamic> serverPhotos;
   final List<dynamic>? folderFilter;
-  
+
   MergeAndGroupPhotosParams({
     required this.localPhotos,
     required this.serverPhotos,
     this.folderFilter,
   });
 }
+
 Map<String, List<dynamic>> mergeAndGroupPhotos(
   List<AssetEntity> localPhotos,
   List<dynamic> serverPhotos, {
   List<dynamic>? folderFilter,
 }) {
+  Set<String> serverPhotoIds = {};
+  for (var serverPhoto in serverPhotos) {
+    final id = serverPhoto['id'];
+    if (id != null) {
+      serverPhotoIds.add(id);
+    }
+  }
+
   List<Map<String, dynamic>> localList = [];
   for (var photo in localPhotos) {
+    if (photo.title != null && serverPhotoIds.contains(photo.title)) continue;
     if (folderFilter != null && folderFilter.isNotEmpty) {
       if (!folderFilter.contains(photo.title)) continue;
     }
@@ -41,6 +52,7 @@ Map<String, List<dynamic>> mergeAndGroupPhotos(
       'date': photo.createDateTime,
     });
   }
+
   List<Map<String, dynamic>> serverList = [];
   for (var serverPhoto in serverPhotos) {
     Map<String, dynamic> exifData = serverPhoto['exif'] ?? {};
@@ -64,8 +76,6 @@ Map<String, List<dynamic>> mergeAndGroupPhotos(
       'date': date,
     });
   }
-
-  // localList.sort((a, b) => b['date'].compareTo(a['date']));
   serverList.sort((a, b) => b['date'].compareTo(a['date']));
   int i = 0, j = 0;
   List<Map<String, dynamic>> merged = [];
@@ -86,6 +96,7 @@ Map<String, List<dynamic>> mergeAndGroupPhotos(
     merged.add(serverList[j]);
     j++;
   }
+
   Map<String, List<dynamic>> groupedPhotos = {};
   DateFormat formatter = DateFormat('yyyy-MM-dd');
   for (var photo in merged) {
@@ -97,7 +108,8 @@ Map<String, List<dynamic>> mergeAndGroupPhotos(
   return groupedPhotos;
 }
 
-Map<String, List<dynamic>> _mergeAndGroupPhotosWrapper(MergeAndGroupPhotosParams params) {
+Map<String, List<dynamic>> _mergeAndGroupPhotosWrapper(
+    MergeAndGroupPhotosParams params) {
   return mergeAndGroupPhotos(
     params.localPhotos,
     params.serverPhotos,
@@ -114,6 +126,7 @@ class GalleryScreen extends StatefulWidget {
   final List<dynamic>? folderFilter;
   Map<AssetEntity, List<String>>? localPhotoTags;
   final String? folderId;
+  final List<AssetEntity>? preFilteredPhotos;
 
   GalleryScreen({
     this.multiSelectMode = false,
@@ -123,6 +136,7 @@ class GalleryScreen extends StatefulWidget {
     this.localPhotoTags,
     this.folderFilter,
     this.folderId,
+     this.preFilteredPhotos,
   });
 
   @override
@@ -141,6 +155,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   Map<String, List<dynamic>> _photosGroupedByDate = {};
   Set<dynamic> _selectedPhotos = {};
   bool _loading = true;
+  bool _hideLocalPhotos = false;
   bool _tagsLoading = false;
   double _progress = 0.0;
   bool _isFilteredByTag = false;
@@ -155,39 +170,43 @@ class _GalleryScreenState extends State<GalleryScreen>
   List<String> _suggestedTags = [];
   String? _source;
   late AnimationController _loadingController;
-  
+  Color kBackgroundColor = Color(0xFFF5EEDC); 
+  Color kPrimaryColor = Color(0xFF27548A); 
+  Color kAppBarColor = Color(0xFF183B4E); 
+  Color kAccentColor = Color(0xFFDDA853); 
 
   @override
-  void initState() {
-    super.initState();
+void initState() {
+  super.initState();
 
-    _source = widget.source;
-    if (widget.localPhotoTags != null) {
-      localPhotoTags = widget.localPhotoTags!;
-    }
-    if (widget.selectedTags != null && widget.selectedTags!.isNotEmpty) {
-      _activeTags = widget.selectedTags!;
-      _isFilteredByTag = true;
-    }
-    if (widget.folderFilter != null) {
-      _currentFolderFilter = widget.folderFilter;
-    }
+  _source = widget.source;
 
-    _setLocale();
-
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text;
-      });
-      _updateSuggestions(_searchController.text);
-    });
-
-    _fetchUserLocalFavorites();
-    _fetchPhotosAndGenerateTags();
-    _loadingController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 2))
-          ..repeat();
+  if (widget.localPhotoTags != null) {
+    localPhotoTags = widget.localPhotoTags!;
   }
+  if (widget.selectedTags != null && widget.selectedTags!.isNotEmpty) {
+    _activeTags = widget.selectedTags!;
+    _isFilteredByTag = true;
+  }
+  if (widget.folderFilter != null) {
+    _currentFolderFilter = widget.folderFilter;
+  }
+
+  _setLocale();
+  _searchController.addListener(() {
+    setState(() {
+      _searchQuery = _searchController.text;
+    });
+    _updateSuggestions(_searchController.text);
+  });
+  _fetchUserLocalFavorites();
+  _fetchPhotosAndGenerateTags();
+  _loadingController = AnimationController(
+    vsync: this, 
+    duration: const Duration(seconds: 2)
+  )..repeat();
+}
+
 
   @override
   void dispose() {
@@ -220,31 +239,46 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 
   Future<void> _confirmGenerateTags() async {
-  if (_photos.length >= 500) {
-    bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Предупреждение"),
-        content: const Text(
-            "Рекомендуем генерировать теги для менее чем 500 локальных фотографий, "
-            "иначе процесс займет очень значительное время. Выберите нужные фото при помощи папок и дат."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Отмена"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Продолжить"),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-  }
-  _generateTagsForPhotos();
-}
+    List<AssetEntity> filteredLocalPhotos = _startDate != null &&
+            _endDate != null
+        ? _photos.where((photo) {
+            final dt = photo.createDateTime;
+            return dt.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                dt.isBefore(_endDate!.add(const Duration(days: 1)));
+          }).toList()
+        : _photos;
 
+    if (filteredLocalPhotos.length >= 500) {
+      bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFF5EEDC),
+          title: const Text("Предупреждение",
+              style: TextStyle(color: Color(0xFF183B4E))),
+          content: const Text(
+              "Рекомендуем генерировать теги для менее чем 500 локальных фотографий, "
+              "иначе процесс займет значительное время. Выберите нужные фото при помощи папок и дат.",
+              style: TextStyle(color: Color(0xFF183B4E))),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Отмена",
+                  style: TextStyle(color: Color(0xFF27548A))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDDA853)),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Продолжить",
+                  style: TextStyle(color: Color(0xFF183B4E))),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    _generateTagsForPhotos();
+  }
 
   Widget buildCustomLoadingOverlay(String message) {
     return Container(
@@ -266,7 +300,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                   padding: const EdgeInsets.all(16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+                      colors: [Color(0xFF27548A), Color(0xFFDDA853)],
                     ),
                   ),
                   child: const Icon(
@@ -278,9 +312,9 @@ class _GalleryScreenState extends State<GalleryScreen>
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              "Пожалуйста, подождите...",
-              style: TextStyle(
+            Text(
+              message,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -308,136 +342,166 @@ class _GalleryScreenState extends State<GalleryScreen>
     }
   }
 
-  Future<void> _fetchPhotosAndGenerateTags() async {
-    final PermissionState result = await PhotoManager.requestPermissionExtend();
-    if (result == PermissionState.authorized) {
-      var fetchedServerPhotos = await _photoService.fetchPhotosFromFirestore();
-      if (_source == "favorites") {
-        User? currentUser = _auth.currentUser;
-        if (currentUser != null) {
-          fetchedServerPhotos = fetchedServerPhotos.where((photo) {
-            List<dynamic> favs = photo['favorites'] ?? [];
-            return favs.contains(currentUser.uid);
-          }).toList();
-        }
+ Future<void> _fetchPhotosAndGenerateTags() async {
+  final PermissionState result = await PhotoManager.requestPermissionExtend();
+  if (result == PermissionState.authorized) {
+    var fetchedServerPhotos = await _photoService.fetchPhotosFromFirestore();
+    if (_source == "favorites") {
+      User? currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        fetchedServerPhotos = fetchedServerPhotos.where((photo) {
+          List<dynamic> favs = photo['favorites'] ?? [];
+          return favs.contains(currentUser.uid);
+        }).toList();
       }
+    }
+    
+    if (_source == "tags" && widget.preFilteredPhotos != null && _activeTags.isNotEmpty) {
+      _photos = widget.preFilteredPhotos!;
+      List<dynamic> filteredServerPhotos = fetchedServerPhotos.where((serverPhoto) {
+        List<dynamic> serverTags = serverPhoto['tags'] ?? [];
+        return _activeTags.any((tag) =>
+            serverTags.any((serverTag) =>
+                serverTag.toString().toLowerCase() ==
+                tag.toString().toLowerCase()));
+      }).toList();
+    
+      final params = MergeAndGroupPhotosParams(
+        localPhotos: _photos,
+        serverPhotos: filteredServerPhotos,
+        folderFilter: _currentFolderFilter,
+      );
+      Map<String, List<dynamic>> groupedPhotos =
+          await compute(_mergeAndGroupPhotosWrapper, params);
       setState(() {
-        _serverPhotos = fetchedServerPhotos;
+        _photosGroupedByDate = groupedPhotos;
+        _loading = false;
       });
-      await _fetchLocalPhotos();
-      if (_source == "favorites") {
-        _photos = _photos
-            .where((p) => _userLocalFavorites.contains(p.title))
-            .toList();
-      }
-      _groupPhotosByDate();
     } else {
+      await _fetchLocalPhotos();
+      
+      if (_source == "favorites") {
+        _photos = _photos.where((p) => _userLocalFavorites.contains(p.title)).toList();
+      }
+      
+      final params = MergeAndGroupPhotosParams(
+        localPhotos: _photos,
+        serverPhotos: fetchedServerPhotos,
+        folderFilter: _currentFolderFilter,
+      );
+      Map<String, List<dynamic>> groupedPhotos =
+          await compute(_mergeAndGroupPhotosWrapper, params);
       setState(() {
+        _photosGroupedByDate = groupedPhotos;
         _loading = false;
       });
     }
+  } else {
+    setState(() {
+      _loading = false;
+    });
   }
+}
+
+
 
   void _updateGroupsIncrementally(List<AssetEntity> newPhotos) {
-  DateFormat formatter = DateFormat('yyyy-MM-dd');
-  setState(() {
-    for (var photo in newPhotos) {
-      String key = formatter.format(photo.createDateTime);
-      var photoItem = {
-        'type': 'local',
-        'photo': photo,
-        'date': photo.createDateTime,
-      };
-      if (_photosGroupedByDate.containsKey(key)) {
-        _photosGroupedByDate[key]!.add(photoItem);
-      } else {
-        _photosGroupedByDate[key] = [photoItem];
-      }
-    }
-  });
-}
-
-
-Future<void> _fetchLocalPhotos() async {
-  List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
-    type: RequestType.image,
-  );
-  Set<AssetEntity> uniqueImages = {};
-  if (widget.folderFilter != null && widget.folderFilter!.isNotEmpty) {
-    List<String> requiredPhotoTitles = List<String>.from(widget.folderFilter!);
-    for (var path in paths) {
-      int totalCount = await path.assetCountAsync;
-      int end = totalCount > 300 ? 300 : totalCount;
-      final List<AssetEntity> assets = await path.getAssetListRange(start: 0, end: end);
-      for (var asset in assets) {
-        if (requiredPhotoTitles.contains(asset.title)) {
-          uniqueImages.add(asset);
-          requiredPhotoTitles.remove(asset.title);
+    DateFormat formatter = DateFormat('yyyy-MM-dd');
+    setState(() {
+      for (var photo in newPhotos) {
+        String key = formatter.format(photo.createDateTime);
+        var photoItem = {
+          'type': 'local',
+          'photo': photo,
+          'date': photo.createDateTime,
+        };
+        if (_photosGroupedByDate.containsKey(key)) {
+          _photosGroupedByDate[key]!.add(photoItem);
+        } else {
+          _photosGroupedByDate[key] = [photoItem];
         }
       }
-      if (requiredPhotoTitles.isEmpty) break;
-    }
-    setState(() {
-      _photos = uniqueImages.toList();
     });
-  } else if (_source == "favorites") {
-    Set<AssetEntity> favoritePhotos = {};
-    final Set<String> favoriteTitles = _userLocalFavorites.toSet();
-    for (var path in paths) {
-      int totalCount = await path.assetCountAsync;
-      final List<AssetEntity> assets = await path.getAssetListRange(start: 0, end: totalCount);
-      for (var asset in assets) {
-        if (asset.title != null && favoriteTitles.contains(asset.title)) {
-          favoritePhotos.add(asset);
-          if (favoritePhotos.length == favoriteTitles.length) break;
+  }
+
+  Future<void> _fetchLocalPhotos() async {
+    List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+      type: RequestType.image,
+    );
+    Set<AssetEntity> uniqueImages = {};
+    if (widget.folderFilter != null && widget.folderFilter!.isNotEmpty) {
+      List<String> requiredPhotoTitles =
+          List<String>.from(widget.folderFilter!);
+      for (var path in paths) {
+        int totalCount = await path.assetCountAsync;
+        int end = totalCount > 300 ? 300 : totalCount;
+        final List<AssetEntity> assets =
+            await path.getAssetListRange(start: 0, end: end);
+        for (var asset in assets) {
+          if (requiredPhotoTitles.contains(asset.title)) {
+            uniqueImages.add(asset);
+            requiredPhotoTitles.remove(asset.title);
+          }
         }
+        if (requiredPhotoTitles.isEmpty) break;
       }
-      if (favoritePhotos.length == favoriteTitles.length) break;
-    }
-    setState(() {
-      _photos = favoritePhotos.toList();
-    });
-  } else {
-    int fetchedCount = 0;
-    for (var path in paths) {
-      int totalCount = await path.assetCountAsync;
-      if (fetchedCount >= 500) break;
-      int toFetch = totalCount;
-      if (fetchedCount + totalCount > 500) {
-        toFetch = 500 - fetchedCount;
+      setState(() {
+        _photos = uniqueImages.toList();
+      });
+    } else if (_source == "favorites") {
+      Set<AssetEntity> favoritePhotos = {};
+      final Set<String> favoriteTitles = _userLocalFavorites.toSet();
+      for (var path in paths) {
+        int totalCount = await path.assetCountAsync;
+        final List<AssetEntity> assets =
+            await path.getAssetListRange(start: 0, end: totalCount);
+        for (var asset in assets) {
+          if (asset.title != null && favoriteTitles.contains(asset.title)) {
+            favoritePhotos.add(asset);
+            if (favoritePhotos.length == favoriteTitles.length) break;
+          }
+        }
+        if (favoritePhotos.length == favoriteTitles.length) break;
       }
-      final List<AssetEntity> assets =
-          await path.getAssetListRange(start: 0, end: toFetch);
-      uniqueImages.addAll(assets);
-      fetchedCount += assets.length;
+      setState(() {
+        _photos = favoritePhotos.toList();
+      });
+    } else {
+      int fetchedCount = 0;
+      for (var path in paths) {
+        int totalCount = await path.assetCountAsync;
+        if (fetchedCount >= 500) break;
+        int toFetch = totalCount;
+        if (fetchedCount + totalCount > 500) {
+          toFetch = 500 - fetchedCount;
+        }
+        final List<AssetEntity> assets =
+            await path.getAssetListRange(start: 0, end: toFetch);
+        uniqueImages.addAll(assets);
+        fetchedCount += assets.length;
+      }
+      setState(() {
+        _photos = uniqueImages.toList();
+      });
+
+      Future(() async {
+        Set<AssetEntity> allImages = {};
+        for (var path in paths) {
+          int totalCount = await path.assetCountAsync;
+          final List<AssetEntity> assets =
+              await path.getAssetListRange(start: 0, end: totalCount);
+          allImages.addAll(assets);
+        }
+        final newPhotos = allImages.difference(_photos.toSet()).toList();
+        if (newPhotos.isNotEmpty) {
+          setState(() {
+            _photos.addAll(newPhotos);
+          });
+          _updateGroupsIncrementally(newPhotos);
+        }
+      });
     }
-    setState(() {
-      _photos = uniqueImages.toList();
-    });
-
-   Future(() async {
-  Set<AssetEntity> allImages = {};
-  for (var path in paths) {
-    int totalCount = await path.assetCountAsync;
-    final List<AssetEntity> assets =
-        await path.getAssetListRange(start: 0, end: totalCount);
-    allImages.addAll(assets);
   }
-  final newPhotos = allImages.difference(_photos.toSet()).toList();
-  if (newPhotos.isNotEmpty) {
-    setState(() {
-      _photos.addAll(newPhotos);
-    });
-    _updateGroupsIncrementally(newPhotos);
-  }
-});
-
-
-
-  }
-}
-
-
 
   void _groupPhotosByDate() async {
     List<dynamic> allPhotos = [];
@@ -479,12 +543,13 @@ Future<void> _fetchLocalPhotos() async {
       }).toList();
     }
     final params = MergeAndGroupPhotosParams(
-  localPhotos: _photos,           
-  serverPhotos: _serverPhotos,      
-  folderFilter: _currentFolderFilter,
-);
+      localPhotos: _photos,
+      serverPhotos: _serverPhotos,
+      folderFilter: _currentFolderFilter,
+    );
 
-Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWrapper, params);
+    Map<String, List<dynamic>> groupedPhotos =
+        await compute(_mergeAndGroupPhotosWrapper, params);
     setState(() {
       _photosGroupedByDate = groupedPhotos;
       _loading = false;
@@ -512,8 +577,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
           .get();
       if (doc.exists) {
         setState(() {
-          _currentFolderFilter =
-              doc.data()?['photos'] as List<dynamic>?;
+          _currentFolderFilter = doc.data()?['photos'] as List<dynamic>?;
         });
       }
     }
@@ -537,21 +601,26 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
 
   List<dynamic> _visiblePhotos() {
     var allPhotos = _photosGroupedByDate.values.expand((e) => e).toList();
+    if (_hideLocalPhotos) {
+      allPhotos = allPhotos.where((item) => item['type'] == 'server').toList();
+    }
     if (_searchQuery.isNotEmpty) {
       allPhotos = allPhotos.where((item) {
         if (item['type'] == 'server') {
           final sp = item['photo'];
           final tags = (sp['tags'] ?? []) as List<dynamic>;
           final ocrText = (sp['ocrText'] ?? '').toString();
-          return tags.any((t) =>
-                  t.toString().toLowerCase().contains(_searchQuery.toLowerCase())) ||
+          return tags.any((t) => t
+                  .toString()
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase())) ||
               ocrText.toLowerCase().contains(_searchQuery.toLowerCase());
         } else {
           final lp = item['photo'] as AssetEntity;
           final tags = localPhotoTags[lp];
           if (tags == null) return false;
-          return tags.any((tag) =>
-              tag.toLowerCase().contains(_searchQuery.toLowerCase()));
+          return tags.any(
+              (tag) => tag.toLowerCase().contains(_searchQuery.toLowerCase()));
         }
       }).toList();
     }
@@ -559,12 +628,15 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
       allPhotos = allPhotos.where((item) {
         if (item['type'] == 'server') {
           final tags = (item['photo']['tags'] ?? []) as List<dynamic>;
-          return tags.any((tag) => _activeTags.contains(tag));
+          return tags.any((tag) => _activeTags.any((activeTag) =>
+              tag.toString().toLowerCase() ==
+              activeTag.toString().toLowerCase()));
         } else {
           final lp = item['photo'] as AssetEntity;
-          final tags = localPhotoTags[lp];
-          return tags != null &&
-              tags.any((t) => _activeTags.contains(t));
+          final localTags = localPhotoTags[lp];
+          return localTags != null &&
+              localTags.any((t) => _activeTags.any(
+                  (activeTag) => t.toLowerCase() == activeTag.toLowerCase()));
         }
       }).toList();
     }
@@ -586,7 +658,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
           child: Center(
             child: Text(
               "Нет фотографий",
-              style: TextStyle(color: Colors.white, fontSize: 16),
+              style: TextStyle(color: const Color(0xFF183B4E), fontSize: 16),
             ),
           ),
         ),
@@ -599,16 +671,19 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
       groups[key] ??= [];
       groups[key]!.add(item);
     }
-    List<String> dateKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+    List<String> dateKeys = groups.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
     List<Widget> slivers = [];
     for (String dateKey in dateKeys) {
       DateTime parsedDate = DateTime.parse(dateKey);
-      String formattedDate = DateFormat('dd MMMM yyyy', 'ru_RU').format(parsedDate);
+      String formattedDate =
+          DateFormat('dd MMMM yyyy', 'ru_RU').format(parsedDate);
       List<dynamic> groupPhotos = groups[dateKey] ?? [];
       slivers.add(
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
             child: widget.multiSelectMode
                 ? Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -616,12 +691,13 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
                       Text(
                         formattedDate,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFF183B4E),
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       Checkbox(
+                        activeColor: const Color(0xFFDDA853),
                         value: _areAllPhotosSelected(groupPhotos),
                         onChanged: (bool? value) {
                           setState(() {
@@ -642,7 +718,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
                 : Text(
                     formattedDate,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: Color(0xFF183B4E),
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -732,7 +808,8 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
               context,
               MaterialPageRoute(
                 builder: (context) => PhotoViewScreen.multiple(
-                  photoList: visiblePhotos.map((item) => item['photo']).toList(),
+                  photoList:
+                      visiblePhotos.map((item) => item['photo']).toList(),
                   initialIndex: index,
                   folderId: widget.folderId,
                 ),
@@ -772,134 +849,159 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
   }
 
   Future<void> _deleteSelectedPhotos() async {
-  if (_selectedPhotos.isEmpty) return;
-  int serverCount = _selectedPhotos.where((photo) => photo['type'] == 'server').length;
-  if (serverCount > 1) {
-    bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Подтверждение удаления"),
-        content: Text("Вы выбрали $serverCount серверных фото. Вы уверены, что хотите их удалить?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Отмена"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Удалить"),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-  }
-  if (widget.folderId != null) {
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Подтверждение удаления"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Удалить фото только из папки или полностью из галереи?"),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    onPressed: () => Navigator.pop(context, "folder"),
-                    child: const Text(
-                      "Из папки",
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    onPressed: () => Navigator.pop(context, "gallery"),
-                    child: const Text(
-                      "Из галереи",
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+    if (_selectedPhotos.isEmpty) return;
+    int serverCount =
+        _selectedPhotos.where((photo) => photo['type'] == 'server').length;
+    if (serverCount > 1) {
+      bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFF5EEDC),
+          title: const Text("Подтверждение",
+              style: TextStyle(color: Color(0xFF183B4E))),
+          content: Text(
+              "Вы выбрали $serverCount серверных фото. Вы уверены, что хотите их удалить?",
+              style: const TextStyle(color: Color(0xFF183B4E))),
+          actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, "cancel"),
-              child: const Text(
-                "Отмена",
-                style: TextStyle(fontSize: 12),
-              ),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Отмена",
+                  style: TextStyle(color: Color(0xFF27548A))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDDA853)),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Удалить",
+                  style: TextStyle(color: Color(0xFF183B4E))),
             ),
           ],
         ),
-      ),
-    );
-    if (choice == "cancel" || choice == null) return;
-    if (choice == "folder") {
-      await _photoService.removePhotosFromFolder(_selectedPhotos, widget.folderId);
-      await _updateFolderFilter();
+      );
+      if (confirmed != true) return;
+    }
+    if (widget.folderId != null) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFF5EEDC),
+          title: const Text("Подтверждение",
+              style: TextStyle(color: Color(0xFF183B4E))),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  "Удалить фото только из папки или полностью из галереи?",
+                  style: TextStyle(color: Color(0xFF183B4E))),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: const Color(0xFFDDA853),
+                      ),
+                      onPressed: () => Navigator.pop(context, "folder"),
+                      child: const Text(
+                        "Из папки",
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xFF183B4E)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: const Color(0xFFDDA853),
+                      ),
+                      onPressed: () => Navigator.pop(context, "gallery"),
+                      child: const Text(
+                        "Из галереи",
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xFF183B4E)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context, "cancel"),
+                child: const Text(
+                  "Отмена",
+                  style: TextStyle(fontSize: 12, color: Color(0xFF27548A)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (choice == "cancel" || choice == null) return;
+      if (choice == "folder") {
+        await _photoService.removePhotosFromFolder(
+            _selectedPhotos, widget.folderId);
+        await _updateFolderFilter();
+      } else {
+        await _deletePhotosFromGallery(_selectedPhotos);
+      }
     } else {
       await _deletePhotosFromGallery(_selectedPhotos);
     }
-  } else {
-    await _deletePhotosFromGallery(_selectedPhotos);
+    _showCustomMessage('${_selectedPhotos.length} фото удалено');
+    _toggleMultiSelect();
+    _fetchPhotosAndGenerateTags();
   }
-  _showCustomMessage('${_selectedPhotos.length} фото удалено');
-  _toggleMultiSelect();
-  _fetchPhotosAndGenerateTags();
-}
-
 
   Future<void> _deletePhotosFromGallery(Set<dynamic> photos) async {
-  List<dynamic> serverPhotos = [];
-  List<AssetEntity> localPhotos = [];
-  for (var photo in photos) {
-    if (photo['type'] == 'server') {
-      serverPhotos.add(photo);
-    } else {
-      localPhotos.add(photo['photo']);
+    List<dynamic> serverPhotos = [];
+    List<AssetEntity> localPhotos = [];
+    for (var photo in photos) {
+      if (photo['type'] == 'server') {
+        serverPhotos.add(photo);
+      } else {
+        localPhotos.add(photo['photo']);
+      }
+    }
+
+    if (serverPhotos.isNotEmpty) {
+      bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFF5EEDC),
+          title: const Text("Подтверждение",
+              style: TextStyle(color: Color(0xFF183B4E))),
+          content: Text(
+              "Вы уверены, что хотите удалить ${serverPhotos.length} серверных фото?",
+              style: const TextStyle(color: Color(0xFF183B4E))),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Отмена",
+                  style: TextStyle(color: Color(0xFF27548A))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDDA853)),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Удалить",
+                  style: TextStyle(color: Color(0xFF183B4E))),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    for (var sp in serverPhotos) {
+      await _photoService.deleteServerPhoto(sp['photo']);
+    }
+    if (localPhotos.isNotEmpty) {
+      await PhotoManager.editor
+          .deleteWithIds(localPhotos.map((p) => p.id).toList());
     }
   }
-
-  if (serverPhotos.isNotEmpty) {
-    bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Подтверждение удаления серверных фото"),
-        content: Text("Вы уверены, что хотите удалить ${serverPhotos.length} серверных фото?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Отмена"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Удалить"),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-  }
-  for (var sp in serverPhotos) {
-    await _photoService.deleteServerPhoto(sp['photo']);
-  }
-  if (localPhotos.isNotEmpty) {
-    await PhotoManager.editor.deleteWithIds(localPhotos.map((p) => p.id).toList());
-  }
-}
-
 
   void _toggleMultiSelect() {
     setState(() {
@@ -911,13 +1013,10 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
   void _showActionsBottomSheet() {
     List<Widget> actions = [];
     if (!_tagsLoading && _source != "tags") {
-  actions.add(_buildActionItem(
-      Icons.label, "Сгенерировать теги", _confirmGenerateTags));
-}
-
-    if (_source != "tags" &&
-        _photoTags != null &&
-        _photoTags!.isNotEmpty) {
+      actions.add(_buildActionItem(
+          Icons.label, "Сгенерировать теги", _confirmGenerateTags));
+    }
+    if (_source != "tags" && _photoTags != null && _photoTags!.isNotEmpty) {
       actions.add(_buildActionItem(Icons.cloud, "Посмотреть теги", () {
         Navigator.push(
           context,
@@ -966,10 +1065,10 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
       }));
       actions.add(_buildActionItem(
           Icons.delete, "Удалить выбранные", _deleteSelectedPhotos));
-      actions.add(_buildActionItem(Icons.share, "Поделиться выбранными",
-          _onPressShareMultiple));
-      actions.add(_buildActionItem(Icons.cloud_upload,
-          "Загрузить на сервер", _uploadSelectedPhotos));
+      actions.add(_buildActionItem(
+          Icons.share, "Поделиться выбранными", _onPressShareMultiple));
+      actions.add(_buildActionItem(
+          Icons.cloud_upload, "Загрузить на сервер", _uploadSelectedPhotos));
       if (_source == "album_creation") {
         actions.add(_buildActionItem(Icons.photo_album, "Создать альбом", () {
           Navigator.pop(context, _selectedPhotos.toList());
@@ -989,15 +1088,15 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
           );
         }));
       }
-      actions.add(_buildActionItem(
-          Icons.create_new_folder, "Создать папку", _createFolderFromSelectedPhotos));
+      actions.add(_buildActionItem(Icons.create_new_folder, "Создать папку",
+          _createFolderFromSelectedPhotos));
     }
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF5EEDC),
       builder: (context) {
         return Container(
           constraints: BoxConstraints(
@@ -1046,7 +1145,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: const LinearGradient(
-            colors: [Color(0xFF4A90E2), Color(0xFF50E3C2)],
+            colors: [Color(0xFF27548A), Color(0xFFDDA853)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -1092,7 +1191,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFF5EEDC),
                 shape: BoxShape.circle,
                 boxShadow: const [
                   BoxShadow(
@@ -1102,13 +1201,13 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
                   ),
                 ],
               ),
-              child: Icon(icon, size: 28, color: Colors.blueAccent),
+              child: Icon(icon, size: 28, color: const Color(0xFFDDA853)),
             ),
             const SizedBox(height: 8),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.black87),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF183B4E)),
             ),
           ],
         ),
@@ -1117,100 +1216,110 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
   }
 
   Future<void> _createFolderFromSelectedPhotos() async {
-  final folderNameController = TextEditingController();
-  final currentUser = _auth.currentUser;
-  if (currentUser == null) return;
-  await showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text("Создать папку"),
-      content: TextField(
-        controller: folderNameController,
-        decoration: const InputDecoration(
-          labelText: "Название папки",
-          border: OutlineInputBorder(),
+    final folderNameController = TextEditingController();
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFF5EEDC),
+        title: const Text("Создать папку",
+            style: TextStyle(color: Color(0xFF183B4E))),
+        content: TextField(
+          controller: folderNameController,
+          decoration: const InputDecoration(
+            labelText: "Название папки",
+            border: OutlineInputBorder(),
+          ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Отмена"),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            String folderName = folderNameController.text.trim();
-            if (folderName.isNotEmpty) {
-              List selectedPhotoIds = _selectedPhotos.map((item) {
-                if (item['type'] == 'server') {
-                  return item['photo']['id'];
-                } else {
-                  return item['photo'].title;
-                }
-              }).where((id) => id != null && id.toString().isNotEmpty).toList();
-              DocumentReference folderRef = await FirebaseFirestore.instance
-                  .collection('folders')
-                  .add({
-                'name': folderName,
-                'owner': currentUser.uid,
-                'photos': selectedPhotoIds,
-                'createdAt': FieldValue.serverTimestamp(),
-                'sharedWith': {}
-              });
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Отмена",
+                style: TextStyle(color: Color(0xFF27548A))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDDA853)),
+            onPressed: () async {
+              String folderName = folderNameController.text.trim();
+              if (folderName.isNotEmpty) {
+                List selectedPhotoIds = _selectedPhotos
+                    .map((item) {
+                      if (item['type'] == 'server') {
+                        return item['photo']['id'];
+                      } else {
+                        return item['photo'].title;
+                      }
+                    })
+                    .where((id) => id != null && id.toString().isNotEmpty)
+                    .toList();
+                DocumentReference folderRef =
+                    await FirebaseFirestore.instance.collection('folders').add({
+                  'name': folderName,
+                  'owner': currentUser.uid,
+                  'photos': selectedPhotoIds,
+                  'createdAt': FieldValue.serverTimestamp(),
+                  'sharedWith': {}
+                });
 
-              for (var item in _selectedPhotos) {
-                if (item['type'] == 'server') {
-                  String photoId = item['photo']['id'];
-                  final querySnapshot = await FirebaseFirestore.instance
-                      .collection('photos')
-                      .where('id', isEqualTo: photoId)
-                      .limit(1)
-                      .get();
-                  if (querySnapshot.docs.isNotEmpty) {
-                    final photoDoc = querySnapshot.docs.first;
-                    await photoDoc.reference.update({
-                      'folderIds': FieldValue.arrayUnion([folderRef.id]),
-                      'folderShares.${folderRef.id}': {},
-                    });
+                for (var item in _selectedPhotos) {
+                  if (item['type'] == 'server') {
+                    String photoId = item['photo']['id'];
+                    final querySnapshot = await FirebaseFirestore.instance
+                        .collection('photos')
+                        .where('id', isEqualTo: photoId)
+                        .limit(1)
+                        .get();
+                    if (querySnapshot.docs.isNotEmpty) {
+                      final photoDoc = querySnapshot.docs.first;
+                      await photoDoc.reference.update({
+                        'folderIds': FieldValue.arrayUnion([folderRef.id]),
+                        'folderShares.${folderRef.id}': {},
+                      });
+                    }
                   }
                 }
+
+                Navigator.pop(context);
+                _showCustomMessage("Папка создана");
+                setState(() {
+                  widget.multiSelectMode = false;
+                  _selectedPhotos.clear();
+                });
               }
-
-              Navigator.pop(context);
-              _showCustomMessage("Папка создана");
-              setState(() {
-                widget.multiSelectMode = false;
-                _selectedPhotos.clear();
-              });
-            }
-          },
-          child: const Text("Создать"),
-        ),
-      ],
-    ),
-  );
-}
-
+            },
+            child: const Text("Создать",
+                style: TextStyle(color: Color(0xFF183B4E))),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _onPressShareMultiple() async {
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) =>
-        buildCustomLoadingOverlay("Пожалуйста, подождите..."),
-  );
-  try {
-    List<Map<String, dynamic>> usersList = await _profileService.getUsersList();
-    List<Map<String, dynamic>>? selectedUsers =
-        await showPermissionSelectionBottomSheet(
+    showDialog(
       context: context,
-      users: usersList.where((user) => user['id'] != _auth.currentUser!.uid).toList(),
+      barrierDismissible: false,
+      builder: (context) =>
+          buildCustomLoadingOverlay("Пожалуйста, подождите..."),
     );
-    Navigator.of(context, rootNavigator: true).pop();
-    if (selectedUsers == null || selectedUsers.isEmpty) {
-      _showCustomMessage("Никто не выбран для отправки",
-          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
-      return;
-    }
+    try {
+      List<Map<String, dynamic>> usersList =
+          await _profileService.getUsersList();
+      List<Map<String, dynamic>>? selectedUsers =
+          await showPermissionSelectionBottomSheet(
+        context: context,
+        users: usersList
+            .where((user) => user['id'] != _auth.currentUser!.uid)
+            .toList(),
+      );
+      Navigator.of(context, rootNavigator: true).pop();
+      if (selectedUsers == null || selectedUsers.isEmpty) {
+        _showCustomMessage("Никто не выбран для отправки",
+            icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+        return;
+      }
       final _firestore = FirebaseFirestore.instance;
       List<Map<String, dynamic>> allowedUsers = [];
       List<String> notAllowedRecipients = [];
@@ -1224,11 +1333,9 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
           if (privacy == 'От некоторых пользователей') {
             var allowedUsersData = data['allowedUsers'];
             if (allowedUsersData is Map) {
-              isAllowed =
-                  allowedUsersData.containsKey(_auth.currentUser!.uid);
+              isAllowed = allowedUsersData.containsKey(_auth.currentUser!.uid);
             } else if (allowedUsersData is List) {
-              isAllowed =
-                  allowedUsersData.contains(_auth.currentUser!.uid);
+              isAllowed = allowedUsersData.contains(_auth.currentUser!.uid);
             }
           } else if (privacy == 'Нет') {
             isAllowed = false;
@@ -1236,8 +1343,8 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
           if (isAllowed) {
             allowedUsers.add(recipient);
           } else {
-            notAllowedRecipients.add(
-                data['nickname'] ?? data['email'] ?? 'Unknown');
+            notAllowedRecipients
+                .add(data['nickname'] ?? data['email'] ?? 'Unknown');
           }
         }
       }
@@ -1252,7 +1359,8 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
         if (photoItem['type'] == 'server') {
           bool ok = await _shareServerPhoto(photoItem['photo'], allowedUsers);
           if (!ok) {
-            print("Ошибка отправки серверного фото: ${photoItem['photo']['id']}");
+            print(
+                "Ошибка отправки серверного фото: ${photoItem['photo']['id']}");
           }
         } else {
           await _shareLocalPhoto(photoItem['photo'], allowedUsers);
@@ -1260,8 +1368,7 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
       }
       String message = "Фотографии успешно отправлены";
       if (notAllowedRecipients.isNotEmpty) {
-        message += ". Не отправлено для: " +
-            notAllowedRecipients.join(', ');
+        message += ". Не отправлено для: " + notAllowedRecipients.join(', ');
       }
       _showCustomMessage(message);
     } catch (e) {
@@ -1320,7 +1427,8 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
             .where('id', isEqualTo: localPhoto.title)
             .get();
         if (uploaded.docs.isNotEmpty) {
-          await uploaded.docs.first.reference.update({'sharedWith': sharedWith});
+          await uploaded.docs.first.reference
+              .update({'sharedWith': sharedWith});
         }
       }
     } catch (e) {
@@ -1328,512 +1436,334 @@ Map<String, List<dynamic>> groupedPhotos = await compute(_mergeAndGroupPhotosWra
     }
   }
 
+  Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
+    required BuildContext context,
+    required List<Map<String, dynamic>> users,
+    Map<String, String>? initialSelectedPermissions,
+  }) async {
+    Map<String, String> userPermissions = initialSelectedPermissions != null
+        ? Map.from(initialSelectedPermissions)
+        : {};
+    final TextEditingController searchController = TextEditingController();
+    List<Map<String, dynamic>> filteredUsers = [];
 
-
-Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
-  required BuildContext context,
-  required List<Map<String, dynamic>> users,
-  Map<String, String>? initialSelectedPermissions,
-}) async {
-  Map<String, String> userPermissions = initialSelectedPermissions != null
-      ? Map.from(initialSelectedPermissions)
-      : {};
-  final TextEditingController searchController = TextEditingController();
-  List<Map<String, dynamic>> filteredUsers = [];
-
-  void _filter(String query) {
-    final lowerQuery = query.trim().toLowerCase();
-    if (lowerQuery.isEmpty) {
-      filteredUsers = [];
-    } else {
-      filteredUsers = users.where((u) {
-        final displayName = (u['displayName'] ?? '').toString().toLowerCase();
-        final email = (u['email'] ?? '').toString().toLowerCase();
-        return displayName.contains(lowerQuery) || email.contains(lowerQuery);
-      }).take(10).toList();
-      for (final selectedUid in userPermissions.keys) {
-        if (!filteredUsers.any((u) => u['id'] == selectedUid)) {
-          final found = users.firstWhere((u) => u['id'] == selectedUid,
-              orElse: () => {});
-          if (found.isNotEmpty) filteredUsers.add(found);
+    void _filter(String query) {
+      final lowerQuery = query.trim().toLowerCase();
+      if (lowerQuery.isEmpty) {
+        filteredUsers = [];
+      } else {
+        filteredUsers = users
+            .where((u) {
+              final displayName =
+                  (u['displayName'] ?? '').toString().toLowerCase();
+              final email = (u['email'] ?? '').toString().toLowerCase();
+              return displayName.contains(lowerQuery) ||
+                  email.contains(lowerQuery);
+            })
+            .take(10)
+            .toList();
+        for (final selectedUid in userPermissions.keys) {
+          if (!filteredUsers.any((u) => u['id'] == selectedUid)) {
+            final found = users.firstWhere((u) => u['id'] == selectedUid,
+                orElse: () => {});
+            if (found.isNotEmpty) filteredUsers.add(found);
+          }
         }
       }
     }
-  }
 
-  Widget _buildPermissionChips(String userId, StateSetter setStateModal) {
-    final List<Map<String, dynamic>> permissionOptions = [
-      {
-        'value': 'view',
-        'label': 'Только просмотр',
-        'icon': Icons.visibility,
-        'color': Colors.grey,
-      },
-      {
-        'value': 'save',
-        'label': 'Просмотр + скачивание',
-        'icon': Icons.download,
-        'color': Colors.green,
-      },
-    ];
-    final currentValue = userPermissions[userId];
-    return Wrap(
-      spacing: 8,
-      children: permissionOptions.map((option) {
-        final isSelected = option['value'] == currentValue;
-        return ChoiceChip(
-          selected: isSelected,
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(option['icon'] as IconData,
-                  size: 18, color: isSelected ? Colors.white : option['color']),
-              const SizedBox(width: 4),
-              Text(option['label'] as String,
-                  style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black,
-                      fontSize: 13)),
-            ],
-          ),
-          selectedColor: (option['color'] as Color).withOpacity(0.8),
-          backgroundColor: Colors.grey[200],
-          onSelected: (bool selected) {
-            setStateModal(() {
-              if (selected) {
-                userPermissions[userId] = option['value'] as String;
+    Widget _buildPermissionChips(String userId, StateSetter setStateModal) {
+      final List<Map<String, dynamic>> permissionOptions = [
+        {
+          'value': 'view',
+          'label': 'Только просмотр',
+          'icon': Icons.visibility,
+          'color': const Color(0xFF27548A),
+        },
+        {
+          'value': 'save',
+          'label': 'Просмотр + скачивание',
+          'icon': Icons.download,
+          'color': const Color(0xFFDDA853),
+        },
+      ];
+      final currentValue = userPermissions[userId];
+      return Wrap(
+        spacing: 8,
+        children: permissionOptions.map((option) {
+          final isSelected = option['value'] == currentValue;
+          return ChoiceChip(
+            selected: isSelected,
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(option['icon'] as IconData,
+                    size: 18,
+                    color: isSelected ? Colors.white : option['color']),
+                const SizedBox(width: 4),
+                Text(option['label'] as String,
+                    style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.black,
+                        fontSize: 13)),
+              ],
+            ),
+            selectedColor: (option['color'] as Color).withOpacity(0.8),
+            backgroundColor: Colors.grey[200],
+            onSelected: (bool selected) {
+              setStateModal(() {
+                if (selected) {
+                  userPermissions[userId] = option['value'] as String;
+                }
+              });
+            },
+          );
+        }).toList(),
+      );
+    }
+
+    return await showModalBottomSheet<List<Map<String, dynamic>>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFF5EEDC),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return FractionallySizedBox(
+          heightFactor: 0.6,
+          child: StatefulBuilder(
+            builder: (context, setStateModal) {
+              if (filteredUsers.isEmpty && userPermissions.isNotEmpty) {
+                _filter('');
               }
-            });
-          },
+              return Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 8, bottom: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const Text(
+                    'Выберите пользователей и права',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Введите ник или email для поиска',
+                        prefixIcon: const Icon(Icons.search),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setStateModal(() {
+                          _filter(val);
+                        });
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: filteredUsers.isEmpty
+                        ? Center(
+                            child: Text(
+                              "Введите ник или email для поиска",
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: filteredUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = filteredUsers[index];
+                              final userId = user['id'] as String?;
+                              if (userId == null)
+                                return const SizedBox.shrink();
+                              final bool isSelected =
+                                  userPermissions.containsKey(userId);
+                              return Card(
+                                elevation: 2,
+                                margin: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                  horizontal: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ListTile(
+                                  tileColor: isSelected
+                                      ? Colors.blue.withOpacity(0.1)
+                                      : null,
+                                  leading: Checkbox(
+                                    activeColor: const Color(0xFFDDA853),
+                                    value: isSelected,
+                                    onChanged: (bool? selected) {
+                                      setStateModal(() {
+                                        if (selected == true) {
+                                          userPermissions[userId] = "view";
+                                        } else {
+                                          userPermissions.remove(userId);
+                                        }
+                                        _filter(searchController.text);
+                                      });
+                                    },
+                                  ),
+                                  title: Text(
+                                    user['displayName'] ?? 'Неизвестный',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user['email'] ?? '',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      if (isSelected)
+                                        _buildPermissionChips(
+                                            userId, setStateModal),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context, null),
+                            child: const Text(
+                              'Отмена',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFDDA853)),
+                            onPressed: () {
+                              final result = userPermissions.entries
+                                  .map((e) =>
+                                      {'id': e.key, 'permission': e.value})
+                                  .toList();
+                              Navigator.pop(context, result);
+                            },
+                            child: const Text('Сохранить',
+                                style: TextStyle(fontSize: 16)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         );
-      }).toList(),
+      },
     );
   }
 
-  return await showModalBottomSheet<List<Map<String, dynamic>>>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (BuildContext context) {
-      return FractionallySizedBox(
-        heightFactor: 0.6,
-        child: StatefulBuilder(
-          builder: (context, setStateModal) {
-            if (filteredUsers.isEmpty && userPermissions.isNotEmpty) {
-              _filter('');
-            }
-            return Column(
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 8, bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Text(
-                  'Выберите пользователей и права',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Введите ник или email для поиска',
-                      prefixIcon: const Icon(Icons.search),
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 16,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onChanged: (val) {
-                      setStateModal(() {
-                        _filter(val);
-                      });
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: filteredUsers.isEmpty
-                      ? Center(
-                          child: Text(
-                            "Введите ник или email для поиска",
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: filteredUsers.length,
-                          itemBuilder: (context, index) {
-                            final user = filteredUsers[index];
-                            final userId = user['id'] as String?;
-                            if (userId == null) return const SizedBox.shrink();
-                            final bool isSelected =
-                                userPermissions.containsKey(userId);
-                            return Card(
-                              elevation: 2,
-                              margin: const EdgeInsets.symmetric(
-                                vertical: 4,
-                                horizontal: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: ListTile(
-                                tileColor: isSelected
-                                    ? Colors.blue.withOpacity(0.1)
-                                    : null,
-                                leading: Checkbox(
-                                  value: isSelected,
-                                  onChanged: (bool? selected) {
-                                    setStateModal(() {
-                                      if (selected == true) {
-                                        userPermissions[userId] = "view";
-                                      } else {
-                                        userPermissions.remove(userId);
-                                      }
-                                      _filter(searchController.text);
-                                    });
-                                  },
-                                ),
-                                title: Text(
-                                  user['displayName'] ?? 'Неизвестный',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      user['email'] ?? '',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    if (isSelected)
-                                      _buildPermissionChips(userId, setStateModal),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(context, null),
-                          child: const Text(
-                            'Отмена',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final result = userPermissions.entries
-                                .map((e) => {'id': e.key, 'permission': e.value})
-                                .toList();
-                            Navigator.pop(context, result);
-                          },
-                          child: const Text('Сохранить',
-                              style: TextStyle(fontSize: 16)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    },
-  );
-}
-
-
-  // Future<List<Map<String, dynamic>>?> _showUserSelectionBottomSheet(
-  //     BuildContext context, List<Map<String, dynamic>> users) async {
-  //   final currentUser = _auth.currentUser;
-  //   if (currentUser == null) return null;
-  //   final List<Map<String, dynamic>> fullUsers =
-  //       users.where((u) => u['id'] != currentUser.uid).toList();
-  //   Map<String, String> userPermissions = {};
-  //   final searchController = TextEditingController();
-  //   List<Map<String, dynamic>> filteredUsers = [];
-  //   return await showModalBottomSheet<List<Map<String, dynamic>>>(
-  //     context: context,
-  //     isScrollControlled: true,
-  //     backgroundColor: Colors.white,
-  //     shape: const RoundedRectangleBorder(
-  //       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-  //     ),
-  //     builder: (BuildContext context) {
-  //       return StatefulBuilder(
-  //         builder: (context, setStateModal) {
-  //           return SafeArea(
-  //             child: Padding(
-  //               padding: EdgeInsets.only(
-  //                 left: 16.0,
-  //                 right: 16.0,
-  //                 top: 16.0,
-  //                 bottom: MediaQuery.of(context).viewInsets.bottom + 16.0,
-  //               ),
-  //               child: Column(
-  //                 mainAxisSize: MainAxisSize.min,
-  //                 children: [
-  //                   Container(
-  //                     width: 40,
-  //                     height: 4,
-  //                     margin: const EdgeInsets.only(bottom: 12),
-  //                     decoration: BoxDecoration(
-  //                       color: Colors.grey[300],
-  //                       borderRadius: BorderRadius.circular(2),
-  //                     ),
-  //                   ),
-  //                   const Text(
-  //                     'Выберите пользователей и права',
-  //                     style:
-  //                         TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-  //                   ),
-  //                   const SizedBox(height: 10),
-  //                   TextField(
-  //                     controller: searchController,
-  //                     decoration: InputDecoration(
-  //                       hintText: 'Введите ник или email для поиска',
-  //                       prefixIcon: const Icon(Icons.search),
-  //                       contentPadding: const EdgeInsets.symmetric(
-  //                           vertical: 12, horizontal: 16),
-  //                       border: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(12),
-  //                       ),
-  //                     ),
-  //                     onChanged: (query) {
-  //                       setStateModal(() {
-  //                         if (query.isEmpty) {
-  //                           filteredUsers = [];
-  //                         } else {
-  //                           final q = query.toLowerCase();
-  //                           filteredUsers = fullUsers
-  //                               .where((user) {
-  //                                 final displayName = user['displayName']
-  //                                     .toString()
-  //                                     .toLowerCase();
-  //                                 final email = user['email']
-  //                                     .toString()
-  //                                     .toLowerCase();
-  //                                 return displayName.contains(q) ||
-  //                                     email.contains(q);
-  //                               })
-  //                               .take(5)
-  //                               .toList();
-  //                         }
-  //                       });
-  //                     },
-  //                   ),
-  //                   const SizedBox(height: 10),
-  //                   filteredUsers.isEmpty
-  //                       ? Container(
-  //                           height: 80,
-  //                           alignment: Alignment.center,
-  //                           child: const Text(
-  //                             "Введите ник или email для поиска",
-  //                             style: TextStyle(color: Colors.grey),
-  //                           ),
-  //                         )
-  //                       : ConstrainedBox(
-  //                           constraints: const BoxConstraints(maxHeight: 300),
-  //                           child: ListView.builder(
-  //                             shrinkWrap: true,
-  //                             itemCount: filteredUsers.length,
-  //                             itemBuilder: (context, index) {
-  //                               final user = filteredUsers[index];
-  //                               final userId = user['id'];
-  //                               final isAlreadySelected =
-  //                                   userPermissions.containsKey(userId);
-  //                               return Card(
-  //                                 elevation: 2,
-  //                                 margin: const EdgeInsets.symmetric(vertical: 4),
-  //                                 child: ListTile(
-  //                                   tileColor: isAlreadySelected
-  //                                       ? Colors.blue.withOpacity(0.1)
-  //                                       : null,
-  //                                   leading: Checkbox(
-  //                                     value: isAlreadySelected,
-  //                                     onChanged: (bool? selected) {
-  //                                       setStateModal(() {
-  //                                         if (selected == true) {
-  //                                           userPermissions[userId] = "view";
-  //                                         } else {
-  //                                           userPermissions.remove(userId);
-  //                                         }
-  //                                       });
-  //                                     },
-  //                                   ),
-  //                                   title: Text(user['displayName']),
-  //                                   subtitle: Column(
-  //                                     crossAxisAlignment: CrossAxisAlignment.start,
-  //                                     children: [
-  //                                       Text(user['email']),
-  //                                       if (isAlreadySelected)
-  //                                         Padding(
-  //                                           padding: const EdgeInsets.only(top: 4.0),
-  //                                           child: Row(
-  //                                             children: [
-  //                                               const Text(
-  //                                                 'Права: ',
-  //                                                 style: TextStyle(fontSize: 13),
-  //                                               ),
-  //                                               const SizedBox(width: 6),
-  //                                               Expanded(
-  //                                                 child: DropdownButton<String>(
-  //                                                   value: userPermissions[userId],
-  //                                                   isExpanded: true,
-  //                                                   underline: const SizedBox(),
-  //                                                   items: const [
-  //                                                     DropdownMenuItem(
-  //                                                       value: "view",
-  //                                                       child: Text("Только просмотр",
-  //                                                           style:
-  //                                                               TextStyle(fontSize: 13)),
-  //                                                     ),
-  //                                                     DropdownMenuItem(
-  //                                                       value: "save",
-  //                                                       child: Text("Просмотр и сохранение",
-  //                                                           style:
-  //                                                               TextStyle(fontSize: 13)),
-  //                                                     ),
-  //                                                   ],
-  //                                                   onChanged: (String? value) {
-  //                                                     setStateModal(() {
-  //                                                       if (value != null) {
-  //                                                         userPermissions[userId] = value;
-  //                                                       }
-  //                                                     });
-  //                                                   },
-  //                                                 ),
-  //                                               ),
-  //                                             ],
-  //                                           ),
-  //                                         ),
-  //                                     ],
-  //                                   ),
-  //                                 ),
-  //                               );
-  //                             },
-  //                           ),
-  //                         ),
-  //                   const SizedBox(height: 10),
-  //                   Row(
-  //                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //                     children: [
-  //                       TextButton(
-  //                         onPressed: () => Navigator.pop(context, null),
-  //                         child: const Text('Отмена', style: TextStyle(fontSize: 16)),
-  //                       ),
-  //                       ElevatedButton(
-  //                         onPressed: () {
-  //                           Navigator.pop(
-  //                             context,
-  //                             userPermissions.entries
-  //                                 .map((entry) => {'id': entry.key, 'permission': entry.value})
-  //                                 .toList(),
-  //                           );
-  //                         },
-  //                         child: const Text('Поделиться', style: TextStyle(fontSize: 16)),
-  //                       ),
-  //                     ],
-  //                   ),
-  //                 ],
-  //               ),
-  //             ),
-  //           );
-  //         },
-  //       );
-  //     },
-  //   );
-  // }
-
- Future<void> _generateTagsForPhotos() async {
-  setState(() {
-    _cancelTagGeneration = false;
-    _tagsLoading = true;
-    _progress = 0.0;
-  });
-  final imageLabeler = ImageLabeler(options: ImageLabelerOptions());
-  final translator = GoogleTranslator();
-
-  Map<String, List<AssetEntity>> newPhotoTags = {};
-  int totalPhotos = _photos.length;
-  List<Future<void>> tasks = _photos.map((photo) {
-    return _processPhoto(photo, imageLabeler, translator, newPhotoTags, totalPhotos);
-  }).toList();
-  
-  await Future.wait(tasks);
-  await imageLabeler.close();
-  
-  if (!_cancelTagGeneration) {
+  Future<void> _generateTagsForPhotos() async {
     setState(() {
-      _photoTags!.addAll(newPhotoTags);
+      _cancelTagGeneration = false;
+      _tagsLoading = true;
+      _progress = 0.0;
+    });
+    final imageLabeler = ImageLabeler(options: ImageLabelerOptions());
+    final translator = GoogleTranslator();
+
+    final List<AssetEntity> filteredLocalPhotos = _startDate != null &&
+            _endDate != null
+        ? _photos.where((photo) {
+            final dt = photo.createDateTime;
+            return dt.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                dt.isBefore(_endDate!.add(const Duration(days: 1)));
+          }).toList()
+        : _photos;
+
+    Map<String, List<AssetEntity>> newPhotoTags = {};
+    int totalPhotos = filteredLocalPhotos.length;
+    List<Future<void>> tasks = filteredLocalPhotos.map((photo) {
+      return _processPhoto(
+          photo, imageLabeler, translator, newPhotoTags, totalPhotos);
+    }).toList();
+
+    await Future.wait(tasks);
+    await imageLabeler.close();
+
+    if (!_cancelTagGeneration) {
+      setState(() {
+        _photoTags!.addAll(newPhotoTags);
+      });
+    }
+    setState(() {
+      _tagsLoading = false;
     });
   }
-  setState(() {
-    _tagsLoading = false;
-  });
-}
 
+  Future<void> _processPhoto(
+    AssetEntity photo,
+    ImageLabeler imageLabeler,
+    GoogleTranslator translator,
+    Map<String, List<AssetEntity>> newPhotoTags,
+    int totalPhotos,
+  ) async {
+    if (_cancelTagGeneration) return;
+    final file = await photo.file;
+    if (file == null || _cancelTagGeneration) return;
+    final inputImage = InputImage.fromFile(file);
+    final labels = await imageLabeler.processImage(inputImage);
+    if (_cancelTagGeneration) return;
 
-
- Future<void> _processPhoto(
-  AssetEntity photo,
-  ImageLabeler imageLabeler,
-  GoogleTranslator translator,
-  Map<String, List<AssetEntity>> newPhotoTags,
-  int totalPhotos,
-) async {
-  if (_cancelTagGeneration) return;
-  final file = await photo.file;
-  if (file == null || _cancelTagGeneration) return;
-  final inputImage = InputImage.fromFile(file);
-  final labels = await imageLabeler.processImage(inputImage);
-  if (_cancelTagGeneration) return;
-  
-  List<String> photoTags = [];
-  for (var label in labels) {
-    if (label.confidence >= 0.7) {
-      String tag = label.label;
-      try {
-        final translation = await translator.translate(tag, from: 'en', to: 'ru');
-        tag = translation.text;
-      } catch (_) {}
-      photoTags.add(tag);
+    List<String> photoTags = [];
+    bool containsCyrillic(String s) {
+      return RegExp(r'[А-Яа-я]').hasMatch(s);
     }
-  }
-  localPhotoTags[photo] = photoTags;
-  for (var tag in photoTags) {
-    if (newPhotoTags.containsKey(tag)) {
-      newPhotoTags[tag]!.add(photo);
-    } else {
-      newPhotoTags[tag] = [photo];
+
+    for (var label in labels) {
+      if (label.confidence >= 0.7) {
+        String tag = label.label;
+        if (!containsCyrillic(tag)) {
+          try {
+            final translation =
+                await translator.translate(tag, from: 'en', to: 'ru');
+            tag = translation.text;
+          } catch (_) {}
+        }
+        photoTags.add(tag);
+      }
     }
+    localPhotoTags[photo] = photoTags;
+    for (var tag in photoTags) {
+      if (newPhotoTags.containsKey(tag)) {
+        newPhotoTags[tag]!.add(photo);
+      } else {
+        newPhotoTags[tag] = [photo];
+      }
+    }
+    setState(() {
+      _progress += 1 / totalPhotos;
+    });
   }
-  setState(() {
-    _progress += 1 / totalPhotos;
-  });
-}
-
-
 
   Widget _buildLoadingOverlay() {
     return Container(
@@ -1855,7 +1785,7 @@ Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
                   padding: const EdgeInsets.all(16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+                      colors: [Color(0xFF27548A), Color(0xFFDDA853)],
                     ),
                   ),
                   child: const Icon(
@@ -1883,7 +1813,8 @@ Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
   }
 
   void _showCustomMessage(String message,
-      {IconData icon = Icons.check_circle_outline, Color backgroundColor = Colors.green}) {
+      {IconData icon = Icons.check_circle_outline,
+      Color backgroundColor = Colors.green}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: backgroundColor,
@@ -1891,7 +1822,9 @@ Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
           children: [
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
+            Expanded(
+                child:
+                    Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
         behavior: SnackBarBehavior.floating,
@@ -1926,187 +1859,238 @@ Future<List<Map<String, dynamic>>?> showPermissionSelectionBottomSheet({
   }
 
   @override
-Widget build(BuildContext context) {
-  return WillPopScope(
-    onWillPop: () async {
-      if (_tagsLoading) {
-        bool shouldCancel = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Подтверждение"),
-            content: const Text(
-                "Процесс генерации тегов ещё идет. Вы действительно хотите выйти и отменить процесс?"),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text("Нет"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text("Да"),
-              ),
-            ],
-          ),
-        ) ?? false;
-        if (shouldCancel) {
-          setState(() {
-            _cancelTagGeneration = true;
-            _tagsLoading = false;
-          });
-          return true;
-        } else {
-          return false;
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (_tagsLoading) {
+          bool shouldCancel = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: const Color(0xFFF5EEDC),
+                  title: const Text("Подтверждение",
+                      style: TextStyle(color: Color(0xFF183B4E))),
+                  content: const Text(
+                      "Процесс генерации тегов ещё идёт. Вы действительно хотите выйти и отменить процесс?",
+                      style: TextStyle(color: Color(0xFF183B4E))),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text("Нет",
+                          style: TextStyle(color: Color(0xFF27548A))),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text("Да",
+                          style: TextStyle(color: Color(0xFFDDA853))),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+          if (shouldCancel) {
+            setState(() {
+              _cancelTagGeneration = true;
+              _tagsLoading = false;
+            });
+            return true;
+          } else {
+            return false;
+          }
         }
-      }
-      return true;
-    },
-    child: Stack(
-      children: [
-        Scaffold(
-          extendBodyBehindAppBar: true,
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
+        return true;
+      },
+      child: Stack(
+        children: [
+          Scaffold(
+            extendBodyBehindAppBar: true,
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFF5EEDC), Color(0xFF183B4E)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
               ),
-            ),
-            child: SafeArea(
-              child: CustomScrollView(
-                slivers: [
-                  SliverAppBar(
-                    pinned: true,
-                    backgroundColor: Colors.black.withOpacity(0.2),
-                    elevation: 0,
-                    title: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white54,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        maxLines: 1,
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: InputDecoration(
-                          hintText: 'Поиск по тегам...',
-                          hintStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                          prefixIcon: Icon(Icons.search),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 0),
+              child: SafeArea(
+                child: CustomScrollView(
+                  slivers: [
+                    SliverAppBar(
+                      pinned: true,
+                      backgroundColor: const Color(0xFF27548A),
+                      elevation: 2,
+                      title: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          maxLines: 1,
+                          textAlignVertical: TextAlignVertical.center,
+                          style: const TextStyle(color: Color(0xFF183B4E)),
+                          decoration: InputDecoration(
+                            hintText: 'Введите теги...',
+                            hintStyle: const TextStyle(
+                                fontSize: 10.5, color: Color(0xFF27548A)),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              size: 22,
+                              color: Color(0xFFDDA853),
+                            ),
+                            prefixIconConstraints: const BoxConstraints(
+                              minWidth: 30, 
+                              minHeight: 20,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 12),
+                          ),
                         ),
                       ),
-                    ),
-                    bottom: PreferredSize(
-                      preferredSize: Size.fromHeight(
-                          _suggestedTags.isNotEmpty ? 50 : 0),
-                      child: _suggestedTags.isNotEmpty
-                          ? Container(
-                              height: 50,
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                children: _suggestedTags.map((tag) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: ActionChip(
-                                      label: Text(tag),
-                                      onPressed: () {
-                                        _searchController.text = tag;
-                                        _searchController.selection =
-                                            TextSelection.collapsed(
-                                                offset: tag.length);
-                                      },
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.date_range),
-                        tooltip: "Фильтр по дате",
-                        onPressed: _chooseDateRangeInputMethod,
+                      bottom: PreferredSize(
+                        preferredSize:
+                            Size.fromHeight(_suggestedTags.isNotEmpty ? 50 : 0),
+                        child: _suggestedTags.isNotEmpty
+                            ? Container(
+                                height: 50,
+                                alignment: Alignment.centerLeft,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: _suggestedTags.map((tag) {
+                                    return Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8.0),
+                                      child: ActionChip(
+                                        backgroundColor:
+                                            const Color(0xFFDDA853),
+                                        label: Text(tag,
+                                            style: const TextStyle(
+                                                color: Color(0xFF183B4E))),
+                                        onPressed: () {
+                                          _searchController.text = tag;
+                                          _searchController.selection =
+                                              TextSelection.collapsed(
+                                                  offset: tag.length);
+                                        },
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.more_horiz),
-                        tooltip: "Действия",
-                        onPressed: _showActionsBottomSheet,
-                      ),
-                    ],
-                  ),
-                  if (_startDate != null && _endDate != null)
-                    SliverToBoxAdapter(child: _buildDateFilterWidget()),
-                  if (_tagsLoading)
-                    SliverFillRemaining(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            "Создание тегов...",
-                            style: TextStyle(fontSize: 16, color: Colors.white),
+                      actions: [
+                        IconButton(
+                          icon: Icon(
+                            _hideLocalPhotos
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: const Color(0xFFDDA853),
                           ),
-                          const SizedBox(height: 20),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: _progress,
-                                minHeight: 8,
-                                backgroundColor: Colors.white54,
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
-                              ),
+                          tooltip: _hideLocalPhotos
+                              ? 'Показать все фотографии'
+                              : 'Показать только серверные фотографии',
+                          onPressed: () {
+                            setState(() {
+                              _hideLocalPhotos = !_hideLocalPhotos;
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.date_range,
+                              color: Color(0xFFDDA853)),
+                          tooltip: "Фильтр по дате",
+                          onPressed: _chooseDateRangeInputMethod,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.more_horiz,
+                              color: Color(0xFFDDA853)),
+                          tooltip: "Действия",
+                          onPressed: _showActionsBottomSheet,
+                        ),
+                      ],
+                    ),
+                    if (_startDate != null && _endDate != null)
+                      SliverToBoxAdapter(child: _buildDateFilterWidget()),
+                    if (_tagsLoading)
+                      SliverFillRemaining(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Создание тегов...",
+                              style:
+                                  TextStyle(fontSize: 16, color: Colors.white),
                             ),
-                          ),
-                          const SizedBox(height: 20),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.8),
+                            const SizedBox(height: 20),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 20.0),
+                              child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Icon(Icons.info_outline, color: Colors.blueAccent),
-                                  SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      "Чтобы поиск по тексту на фотографии работал, сохраните её на сервере.",
-                                      style: TextStyle(fontSize: 14, color: Colors.black87),
-                                    ),
-                                  ),
-                                ],
+                                child: LinearProgressIndicator(
+                                  value: _progress,
+                                  minHeight: 8,
+                                  backgroundColor: Colors.white54,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                          Color(0xFFDDA853)),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ..._buildGallerySlivers(),
-                ],
+                            const SizedBox(height: 20),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 20.0),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.8),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.info_outline,
+                                        color: Color(0xFFDDA853)),
+                                    SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        "Чтобы поиск по тексту на фотографии работал, сохраните её на сервере.",
+                                        style: TextStyle(
+                                            fontSize: 14,
+                                            color: Color(0xFF183B4E)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ..._buildGallerySlivers(),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        if (_loading) _buildLoadingOverlay(),
-      ],
-    ));
+          if (_loading) _buildLoadingOverlay(),
+        ],
+      ),
+    );
   }
 
   Widget _buildDateFilterWidget() {
     if (_startDate == null || _endDate == null) return const SizedBox.shrink();
-    String formattedStart = DateFormat('dd MMM yyyy', 'ru_RU').format(_startDate!);
+    String formattedStart =
+        DateFormat('dd MMM yyyy', 'ru_RU').format(_startDate!);
     String formattedEnd = DateFormat('dd MMM yyyy', 'ru_RU').format(_endDate!);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -2149,13 +2133,16 @@ Widget build(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text("Выбрать через календарь"),
+              leading:
+                  const Icon(Icons.calendar_today, color: Color(0xFFDDA853)),
+              title: const Text("Выбрать через календарь",
+                  style: TextStyle(color: Color(0xFF183B4E))),
               onTap: () => Navigator.pop(context, "calendar"),
             ),
             ListTile(
-              leading: const Icon(Icons.keyboard),
-              title: const Text("Ввести вручную"),
+              leading: const Icon(Icons.keyboard, color: Color(0xFFDDA853)),
+              title: const Text("Ввести вручную",
+                  style: TextStyle(color: Color(0xFF183B4E))),
               onTap: () => Navigator.pop(context, "manual"),
             ),
           ],
@@ -2163,15 +2150,35 @@ Widget build(BuildContext context) {
       },
     );
     if (method == "calendar") {
-      final picked = await showDateRangePicker(
-        context: context,
-        locale: const Locale('ru'),
-        firstDate: DateTime(2000),
-        lastDate: DateTime.now(),
-        helpText: 'Выберите диапазон дат',
-        cancelText: 'Отмена',
-        confirmText: 'Готово',
-      );
+    final picked = await showDateRangePicker(
+  context: context,
+  locale: const Locale('ru'),
+  firstDate: DateTime(2000),
+  lastDate: DateTime.now(),
+  helpText: 'Выберите диапазон дат',
+  cancelText: 'Отмена',
+  confirmText: 'Готово',
+  builder: (context, child) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        colorScheme: ColorScheme.light(
+          primary: kAppBarColor,    
+          onPrimary: Colors.white,   
+          onSurface: kPrimaryColor,  
+          secondary: kAccentColor,   
+        ),
+        datePickerTheme: DatePickerThemeData(
+          rangeSelectionBackgroundColor: kAccentColor.withOpacity(0.5),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: kAccentColor),
+        ),
+      ),
+      child: child!,
+    );
+  },
+);
+
       if (picked != null) {
         setState(() {
           _startDate = picked.start;
@@ -2196,7 +2203,9 @@ Widget build(BuildContext context) {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Введите диапазон дат'),
+          backgroundColor: const Color(0xFFF5EEDC),
+          title: const Text('Введите диапазон дат',
+              style: TextStyle(color: Color(0xFF183B4E))),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2222,13 +2231,18 @@ Widget build(BuildContext context) {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
+              child: const Text('Отмена',
+                  style: TextStyle(color: Color(0xFF27548A))),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDDA853)),
               onPressed: () {
                 try {
-                  startDate = DateFormat('dd/MM/yyyy').parseStrict(startController.text);
-                  endDate = DateFormat('dd/MM/yyyy').parseStrict(endController.text);
+                  startDate = DateFormat('dd/MM/yyyy')
+                      .parseStrict(startController.text);
+                  endDate =
+                      DateFormat('dd/MM/yyyy').parseStrict(endController.text);
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Неверный формат даты')),
@@ -2237,7 +2251,8 @@ Widget build(BuildContext context) {
                 }
                 Navigator.pop(context);
               },
-              child: const Text('Готово'),
+              child: const Text('Готово',
+                  style: TextStyle(color: Color(0xFF183B4E))),
             ),
           ],
         );
