@@ -1,14 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:trip/screens/home_screen.dart';
+import 'package:flutter/services.dart';
 import 'package:trip/screens/register_screen.dart';
-import 'package:trip/services/auth_service.dart'; 
+import 'package:trip/screens/home_screen.dart';
+import 'package:trip/services/auth_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
-  
+  final String? initialEmail;
+  final String? initialPassword;
+
+  const LoginScreen({Key? key, this.initialEmail, this.initialPassword})
+      : super(key: key);
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -19,6 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
   void _showCustomMessage(String message,
       {IconData icon = Icons.check_circle_outline,
       Color backgroundColor = Colors.green}) {
@@ -30,52 +42,88 @@ class _LoginScreenState extends State<LoginScreen> {
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.white),
-              ),
+              child: Text(message, style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  Future<void> _login() async {
-    UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-  email: _emailController.text.trim(),
-  password: _passwordController.text.trim(),
-);
-final user = userCredential.user;
-if (user != null) {
-  if (user.emailVerified) {
-    String? fcmToken = await FirebaseMessaging.instance.getToken();
-    if (fcmToken != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-        'fcmTokens': FieldValue.arrayUnion([fcmToken]),
-      });
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null) {
+      _emailController.text = widget.initialEmail!;
     }
-    _showCustomMessage("Успешный вход");
-    Navigator.pushAndRemoveUntil(
-  context,
-  MaterialPageRoute(builder: (context) => HomeScreen()),
-  (Route<dynamic> route) => false, 
-);
-
-  } else {
-    _showCustomMessage(
-      "Ваш email не подтвержден. Проверьте почту.",
-      icon: Icons.error_outline,
-      backgroundColor: Colors.redAccent,
-    );
-    await _auth.signOut();
+    if (widget.initialPassword != null) {
+      _passwordController.text = widget.initialPassword!;
+    }
   }
-}
 
+  Future<void> _login() async {
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      final user = userCredential.user;
+      if (user != null) {
+        if (user.emailVerified) {
+          String? fcmToken = await FirebaseMessaging.instance.getToken();
+          if (fcmToken != null) {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .update({
+              'fcmTokens': FieldValue.arrayUnion([fcmToken]),
+            });
+          }
+          _showCustomMessage("Успешный вход");
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => HomeScreen()),
+            (Route<dynamic> route) => false,
+          );
+        } else {
+          _showCustomMessage(
+            "Ваш email не подтвержден. Проверьте почту.",
+            icon: Icons.error_outline,
+            backgroundColor: Colors.redAccent,
+          );
+          await _auth.signOut();
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'user-not-found') {
+        _showCustomMessage(
+          "Почта или пароль неверные",
+          icon: Icons.error_outline,
+          backgroundColor: Colors.redAccent,
+        );
+      } else if (e.code == 'invalid-credential') {
+        _showCustomMessage(
+          "Учетные данные некорректны или устарели",
+          icon: Icons.error_outline,
+          backgroundColor: Colors.redAccent,
+        );
+      } else {
+        _showCustomMessage(
+          "Ошибка: ${e.message}",
+          icon: Icons.error_outline,
+          backgroundColor: Colors.redAccent,
+        );
+      }
+    } catch (e) {
+      _showCustomMessage(
+        "Произошла ошибка. Попробуйте позже.",
+        icon: Icons.error_outline,
+        backgroundColor: Colors.redAccent,
+      );
+    }
   }
 
   Future<void> _signInWithGoogle() async {
@@ -83,11 +131,10 @@ if (user != null) {
     if (user != null) {
       _showCustomMessage("Успешный вход через Google");
       Navigator.pushAndRemoveUntil(
-  context,
-  MaterialPageRoute(builder: (context) => HomeScreen()),
-  (Route<dynamic> route) => false, 
-);
-
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen()),
+        (Route<dynamic> route) => false,
+      );
     } else {
       _showCustomMessage("Ошибка при входе через Google",
           icon: Icons.error_outline, backgroundColor: Colors.redAccent);
@@ -119,10 +166,7 @@ if (user != null) {
                 height: 200,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      Color(0xFF89CFFD),
-                      Color(0xFFB084CC),
-                    ],
+                    colors: [kPrimaryColor, kAppBarColor],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -135,7 +179,7 @@ if (user != null) {
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white.withOpacity(0.9),
+                        color: kBackgroundColor.withOpacity(0.9),
                       ),
                     ),
                   ),
@@ -150,7 +194,7 @@ if (user != null) {
                 child: Container(
                   margin: const EdgeInsets.only(top: 100),
                   child: Card(
-                    color: Colors.white.withOpacity(0.85),
+                    color: kBackgroundColor.withOpacity(0.95),
                     elevation: 6,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -166,7 +210,7 @@ if (user != null) {
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple.shade700,
+                              color: kPrimaryColor,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -177,7 +221,13 @@ if (user != null) {
                               prefixIcon: const Icon(Icons.email),
                               filled: true,
                               fillColor: Colors.white,
-                              border: OutlineInputBorder(
+                              labelStyle: TextStyle(color: kPrimaryColor),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kPrimaryColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kAccentColor),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
@@ -189,13 +239,42 @@ if (user != null) {
                             decoration: InputDecoration(
                               labelText: 'Пароль',
                               prefixIcon: const Icon(Icons.lock),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                                icon: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  transitionBuilder: (child, animation) {
+                                    return RotationTransition(
+                                      turns: Tween(begin: 0.75, end: 1.0)
+                                          .animate(animation),
+                                      child: child,
+                                    );
+                                  },
+                                  child: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    key: ValueKey<bool>(_obscurePassword),
+                                  ),
+                                ),
+                              ),
                               filled: true,
                               fillColor: Colors.white,
-                              border: OutlineInputBorder(
+                              labelStyle: TextStyle(color: kPrimaryColor),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kPrimaryColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kAccentColor),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            obscureText: true,
+                            obscureText: _obscurePassword,
                           ),
                           const SizedBox(height: 8),
                           Align(
@@ -205,24 +284,29 @@ if (user != null) {
                                 String? email = await showDialog<String>(
                                   context: context,
                                   builder: (BuildContext context) {
-                                    final resetEmailController = TextEditingController();
+                                    final resetEmailController =
+                                        TextEditingController();
                                     return AlertDialog(
-                                      title: const Text('Восстановление пароля'),
+                                      title:
+                                          const Text('Восстановление пароля'),
                                       content: TextField(
                                         controller: resetEmailController,
                                         decoration: const InputDecoration(
                                           labelText: 'Введите свою эл. почту',
                                         ),
-                                        keyboardType: TextInputType.emailAddress,
+                                        keyboardType:
+                                            TextInputType.emailAddress,
                                       ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(context),
+                                          onPressed: () =>
+                                              Navigator.pop(context),
                                           child: const Text('Отмена'),
                                         ),
                                         TextButton(
                                           onPressed: () {
-                                            Navigator.pop(context, resetEmailController.text);
+                                            Navigator.pop(context,
+                                                resetEmailController.text);
                                           },
                                           child: const Text('Применить'),
                                         ),
@@ -243,7 +327,7 @@ if (user != null) {
                           const SizedBox(height: 16),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.deepPurple,
+                              backgroundColor: kAccentColor,
                               foregroundColor: Colors.white,
                               minimumSize: const Size(double.infinity, 50),
                               shape: RoundedRectangleBorder(
@@ -259,22 +343,22 @@ if (user != null) {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const RegisterScreen(),
-                                ),
+                                    builder: (context) =>
+                                        const RegisterScreen()),
                               );
                             },
                             child: Text(
                               'Нет аккаунта? Зарегистрируйтесь',
                               style: TextStyle(
-                                color: Colors.deepPurple.shade700,
+                                color: kPrimaryColor,
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.redAccent,
-                              foregroundColor: Colors.white,
+                              backgroundColor: kAppBarColor,
+                              foregroundColor: kBackgroundColor,
                               minimumSize: const Size(double.infinity, 50),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -297,6 +381,7 @@ if (user != null) {
     );
   }
 }
+
 class WaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
