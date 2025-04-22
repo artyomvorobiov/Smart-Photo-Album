@@ -1,12 +1,18 @@
+import 'dart:math';
+import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:trip/screens/create_album_screen.dart';
 import 'package:trip/screens/slideshow_screen.dart';
 import 'package:trip/services/albums_service.dart';
 import 'package:trip/services/photo_service.dart';
-import 'package:intl/intl.dart';
-import 'dart:math';
+const Color kBackgroundColor = Color(0xFFF5EEDC);
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
 
 class PhotoAlbumsScreen extends StatefulWidget {
   @override
@@ -46,6 +52,7 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
       setState(() => _loading = false);
     }
   }
+
   void _onAlbumTap(Map<String, dynamic> album) {
     final photos = album['photos'] as List<dynamic>;
     final duration = album['duration'] as double? ?? 5.0;
@@ -65,87 +72,227 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
   }
 
   void _showAlbumOptions(Map<String, dynamic> album) {
-    final currentUser = _auth.currentUser;
-    bool isOwner = album['owner'] == currentUser?.uid;
-    bool canEdit = false;
-    if (!isOwner &&
-        album['sharedWith'] != null &&
-        currentUser != null) {
-      final userPerms = album['sharedWith'][currentUser.uid];
-      if (userPerms != null) {
-        if (userPerms is Map) {
-          canEdit = userPerms['editAlbumSettings'] == true ||
-              userPerms['addPhotos'] == true ||
-              userPerms['deletePhotos'] == true ||
-              userPerms['manageAccess'] == true;
-        } else if (userPerms is String) {
-          canEdit = (userPerms == 'edit' || userPerms == 'add');
-        }
+  final currentUser = _auth.currentUser;
+  bool isOwner = album['owner'] == currentUser?.uid;
+  bool canEdit = false;
+  if (!isOwner && album['sharedWith'] != null && currentUser != null) {
+    final userPerms = album['sharedWith'][currentUser.uid];
+    if (userPerms != null) {
+      if (userPerms is Map) {
+        canEdit = userPerms['editAlbumSettings'] == true ||
+            userPerms['addPhotos'] == true ||
+            userPerms['deletePhotos'] == true ||
+            userPerms['manageAccess'] == true;
+      } else if (userPerms is String) {
+        canEdit = (userPerms == 'edit' || userPerms == 'add');
       }
     }
-    bool canDelete = isOwner;
-    if (!isOwner &&
-        album['sharedWith'] != null &&
-        currentUser != null) {
-      final userPerms = album['sharedWith'][currentUser.uid];
-      if (userPerms != null) {
-        if (userPerms is Map) {
-          canDelete = userPerms['deletePhotos'] == true;
-        } else if (userPerms is String) {
-          canDelete = (userPerms == 'edit');
-        }
+  }
+  bool canDelete = isOwner;
+  if (!isOwner && album['sharedWith'] != null && currentUser != null) {
+    final userPerms = album['sharedWith'][currentUser.uid];
+    if (userPerms != null) {
+      if (userPerms is Map) {
+        canDelete = userPerms['deletePhotos'] == true;
+      } else if (userPerms is String) {
+        canDelete = (userPerms == 'edit');
       }
     }
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white.withOpacity(0.95),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
+  }
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: kBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(Icons.visibility, color: kAccentColor),
+              title: Text(
+                "Просмотреть альбом",
+                style: TextStyle(color: kPrimaryColor),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _onAlbumTap(album);
+              },
+            ),
+            if (isOwner || canEdit)
               ListTile(
-                leading: const Icon(Icons.visibility),
-                title: const Text("Просмотреть альбом"),
-                onTap: () {
+                leading: Icon(Icons.edit, color: kAccentColor),
+                title: Text(
+                  "Редактировать альбом",
+                  style: TextStyle(color: kPrimaryColor),
+                ),
+                onTap: () async {
                   Navigator.pop(context);
-                  _onAlbumTap(album);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          CreateAlbumScreen(albumData: album),
+                    ),
+                  );
+                  _fetchAlbums();
                 },
               ),
-              if (isOwner || canEdit)
-                ListTile(
-                  leading: const Icon(Icons.edit),
-                  title: const Text("Редактировать альбом"),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) =>
-                              CreateAlbumScreen(albumData: album)),
-                    );
-                    _fetchAlbums();
-                  },
+            if (canDelete)
+              ListTile(
+                leading: Icon(Icons.delete, color: kAccentColor),
+                title: Text(
+                  "Удалить альбом",
+                  style: TextStyle(color: kPrimaryColor),
                 ),
-              if (canDelete)
-                ListTile(
-                  leading: const Icon(Icons.delete),
-                  title: const Text("Удалить альбом"),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await _albumService.deleteAlbum(album);
-                    setState(() {
-                      _userAlbums.removeWhere((a) => a['id'] == album['id']);
-                    });
-                  },
-                ),
-            ],
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _albumService.deleteAlbum(album);
+                  setState(() {
+                    _userAlbums.removeWhere((a) => a['id'] == album['id']);
+                  });
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+
+  Widget _buildAlbumCover(Map<String, dynamic> album) {
+    final photos = album['photos'] as List<dynamic>? ?? [];
+    if (photos.isNotEmpty && photos[0] is Map<String, dynamic>) {
+      final firstPhoto = photos[0] as Map<String, dynamic>;
+      final imageUrl = firstPhoto['url'];
+      if (imageUrl != null && imageUrl is String && imageUrl.isNotEmpty) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            image: DecorationImage(
+              image: NetworkImage(imageUrl),
+              fit: BoxFit.cover,
+            ),
           ),
         );
-      },
+      }
+    }
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.grey.shade300,
+      ),
+      child: const Icon(Icons.photo_album, size: 32, color: Colors.white),
     );
   }
+
+  Widget _buildAlbumCard(Map<String, dynamic> album) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _onAlbumTap(album),
+      child: Card(
+        color: kBackgroundColor,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: kPrimaryColor.withOpacity(0.5))),
+        elevation: 4,
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Positioned.fill(child: _buildAlbumCover(album)),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withOpacity(0.4),
+                      Colors.black.withOpacity(0.1)
+                    ],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    album['name'] ?? "Без названия",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      shadows: [
+                        Shadow(
+                            offset: Offset(1, 1),
+                            blurRadius: 3,
+                            color: Colors.black),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "${(album['photos'] as List).length} фото",
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      shadows: [
+                        Shadow(
+                            offset: Offset(1, 1),
+                            blurRadius: 2,
+                            color: Colors.black),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onPressed: () {
+                  _showAlbumOptions(album);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlbumGrid(List<Map<String, dynamic>> albums) {
+    return RefreshIndicator(
+      onRefresh: _fetchAlbums,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: albums.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.8,
+        ),
+        itemBuilder: (context, index) {
+          return _buildAlbumCard(albums[index]);
+        },
+      ),
+    );
+  }
+
+
   Future<List<Map<String, dynamic>>> _fetchAllPhotos() async {
     List<Map<String, dynamic>> serverPhotos =
         await _photoService.fetchPhotosFromFirestore();
@@ -235,15 +382,13 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
         'photos': datePhotos,
       });
     }
-    
     return suggestedAlbums;
   }
+
   Widget _buildSuggestedAlbumCover(Map<String, dynamic> photo) {
     if (photo['type'] == 'server') {
       final imageUrl = photo['url'];
-      if (imageUrl != null &&
-          imageUrl is String &&
-          imageUrl.isNotEmpty) {
+      if (imageUrl != null && imageUrl is String && imageUrl.isNotEmpty) {
         return Container(
           width: 60,
           height: 60,
@@ -259,6 +404,7 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
     }
     return Container(width: 60, height: 60, color: Colors.grey);
   }
+
   void _handleSuggestedAlbumSelection(Map<String, dynamic> album) {
     showDialog(
       context: context,
@@ -272,32 +418,21 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SlideshowScreen(
-                    name: album['name'],
-                    photos: (album['photos'] as List)
-                        .map<Map<String, dynamic>>((photo) {
-                      return Map<String, dynamic>.from(photo);
-                    }).toList(),
-                    duration: 5.0,
-                    theme: album['theme'] ?? 'classic',
-                  ),
-                ),
-              );
+              _onAlbumTap(album);
             },
             child: Text("Просмотреть"),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              Map<String, dynamic> newAlbumData = Map<String, dynamic>.from(album);
+              Map<String, dynamic> newAlbumData =
+                  Map<String, dynamic>.from(album);
               newAlbumData.remove('id');
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => CreateAlbumScreen(albumData: newAlbumData),
+                  builder: (context) =>
+                      CreateAlbumScreen(albumData: newAlbumData),
                 ),
               ).then((albumSaved) {
                 if (albumSaved == true) {
@@ -311,43 +446,64 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
       ),
     );
   }
+
   void _showSuggestedAlbums() async {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
     List<Map<String, dynamic>> suggestedAlbums =
         await _generateSuggestedAlbums();
     Navigator.pop(context);
     showModalBottomSheet(
       context: context,
+      backgroundColor: kBackgroundColor,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Container(
+                    width: 50,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          "Предложенные альбомы",
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      Text(
+                        "Предложенные альбомы",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: kPrimaryColor,
                         ),
                       ),
-                      TextButton.icon(
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kAccentColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                         onPressed: () async {
                           showDialog(
                             context: context,
                             barrierDismissible: false,
-                            builder: (_) =>
-                                Center(child: CircularProgressIndicator()),
+                            builder: (_) => const Center(
+                                child: CircularProgressIndicator()),
                           );
                           List<Map<String, dynamic>> newAlbums =
                               await _generateSuggestedAlbums();
@@ -356,38 +512,61 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
                             suggestedAlbums = newAlbums;
                           });
                         },
-                        icon: Icon(Icons.refresh),
-                        label: Text("Сгенерировать новые"),
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        label: const Text("Новые",
+                            style: TextStyle(color: Colors.white)),
                       ),
                     ],
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Text(
                     "Чтобы предложения отображались, фотографии должны быть сохранены на сервере.",
-                    style: TextStyle(fontSize: 14, color: Colors.redAccent),
+                    style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.redAccent,
+                        fontStyle: FontStyle.italic),
                     textAlign: TextAlign.center,
                   ),
-                  SizedBox(height: 12),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: suggestedAlbums.length,
-                    itemBuilder: (context, index) {
-                      final album = suggestedAlbums[index];
-                      return Card(
-                        margin: EdgeInsets.symmetric(vertical: 4),
-                        child: ListTile(
-                          leading: album['photos'].isNotEmpty
-                              ? _buildSuggestedAlbumCover(album['photos'][0])
-                              : Container(width: 60, height: 60, color: Colors.grey),
-                          title: Text(album['name']),
-                          subtitle: Text("${album['photos'].length} фото"),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _handleSuggestedAlbumSelection(album);
-                          },
-                        ),
-                      );
-                    },
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: suggestedAlbums.length,
+                      itemBuilder: (context, index) {
+                        final album = suggestedAlbums[index];
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 3,
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          child: ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            leading: album['photos'].isNotEmpty
+                                ? _buildSuggestedAlbumCover(album['photos'][0])
+                                : Container(
+                                    width: 60, height: 60, color: Colors.grey),
+                            title: Text(
+                              album['name'],
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: kPrimaryColor,
+                              ),
+                            ),
+                            subtitle: Text(
+                              "${album['photos'].length} фото",
+                              style: TextStyle(color: kPrimaryColor),
+                            ),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _handleSuggestedAlbumSelection(album);
+                            },
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -398,170 +577,64 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen>
     );
   }
 
-  Widget _buildCustomAppBar() {
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      color: Colors.black.withOpacity(0.1),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
-          const Text(
-            "Фотоальбомы",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.auto_awesome, color: Colors.white),
-            tooltip: "Предложенные альбомы",
-            onPressed: _showSuggestedAlbums,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: Colors.white),
-            onPressed: () async {
-              final albumCreated = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => CreateAlbumScreen()),
-              );
-              if (albumCreated == true) {
-                _fetchAlbums();
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlbumCover(Map<String, dynamic> album) {
-    final photos = album['photos'] as List<dynamic>? ?? [];
-    if (photos.isNotEmpty && photos[0] is Map<String, dynamic>) {
-      final firstPhoto = photos[0] as Map<String, dynamic>;
-      final imageUrl = firstPhoto['url'];
-      if (imageUrl != null && imageUrl is String && imageUrl.isNotEmpty) {
-        return Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            image: DecorationImage(
-              image: NetworkImage(imageUrl),
-              fit: BoxFit.cover,
-            ),
-          ),
-        );
-      }
-    }
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey.shade300,
-      ),
-      child: const Icon(Icons.photo_album, size: 32, color: Colors.white),
-    );
-  }
-
-  Widget _buildAlbumList(List<Map<String, dynamic>> albums) {
-    if (albums.isEmpty) {
-      return Center(
-        child: Text(
-          "Нет доступных альбомов.",
-          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 18),
-        ),
-      );
-    }
-    return ListView.separated(
-      itemCount: albums.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      padding: const EdgeInsets.all(12),
-      itemBuilder: (context, index) {
-        final album = albums[index];
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            leading: _buildAlbumCover(album),
-            title: Text(
-              album['name'] ?? "Без названия",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              "${(album['photos'] as List).length} фото",
-              style: const TextStyle(color: Colors.black54),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => _showAlbumOptions(album),
-            ),
-            onTap: () => _onAlbumTap(album),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildCustomAppBar(),
-              if (_loading)
-                const Expanded(child: Center(child: CircularProgressIndicator()))
-              else
-                Expanded(
-                  child: Column(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(20),
-                            bottomRight: Radius.circular(20),
-                          ),
-                        ),
-                        child: TabBar(
-                          controller: _tabController,
-                          indicatorSize: TabBarIndicatorSize.tab,
-                          tabs: const [
-                            Tab(text: "Мои альбомы"),
-                            Tab(text: "Чужие альбомы"),
-                          ],
-                          labelColor: Colors.white,
-                          unselectedLabelColor: Colors.white70,
-                          indicator: BoxDecoration(
-                            color: Colors.white.withOpacity(0.3),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _buildAlbumList(_userAlbums),
-                            _buildAlbumList(_sharedAlbums),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: kAppBarColor,
+        appBar: AppBar(
+          backgroundColor: kAppBarColor,
+          title:
+              const Text("Фотоальбомы", style: TextStyle(color: kBackgroundColor)),
+          bottom: TabBar(
+            indicator: BoxDecoration(
+              color: kAccentColor, 
+              borderRadius: BorderRadius.circular(10),
+            ),
+            indicatorSize:
+                TabBarIndicatorSize.tab, 
+            labelColor:
+                kPrimaryColor, 
+            unselectedLabelColor:
+                Colors.white70, 
+            labelStyle:
+                const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            tabs: const [
+              Tab(text: "Мои альбомы"),
+              Tab(text: "Чужие альбомы"),
             ],
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.auto_awesome, color: kBackgroundColor),
+              tooltip: "Предложенные альбомы",
+              onPressed: _showSuggestedAlbums,
+            ),
+          ],
+        ),
+
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                children: [
+                  _buildAlbumGrid(_userAlbums),
+                  _buildAlbumGrid(_sharedAlbums),
+                ],
+              ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: kAccentColor,
+          child: const Icon(Icons.add),
+          tooltip: "Создать альбом",
+          onPressed: () async {
+            final albumCreated = await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => CreateAlbumScreen()),
+            );
+            if (albumCreated == true) {
+              _fetchAlbums();
+            }
+          },
         ),
       ),
     );
