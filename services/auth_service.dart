@@ -76,6 +76,9 @@ Future<void> signOut() async {
           'nickname': '',
           'privacySetting': 'От всех пользователей',
           'fcmTokens': [fcmToken],
+          'tariff': 'basic',
+          'storageUsed': 0,
+          'storageQuota': 100 * 1024 * 1024,
         });
       }
     }
