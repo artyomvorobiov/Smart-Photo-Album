@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -12,6 +14,12 @@ import 'package:trip/services/photo_service.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
+
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor =
+    Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853);
 
 enum AlbumTheme { classic, modern, event, vintage, bright, night, pastel }
 
@@ -36,6 +44,28 @@ String _getThemeName(AlbumTheme theme) {
   }
 }
 
+Color _getThemeColor(AlbumTheme theme) {
+  switch (theme) {
+    case AlbumTheme.classic:
+      return const Color(0xFFB0C4DE);
+    case AlbumTheme.modern:
+      return const Color(0xFFFC5C7D);
+    case AlbumTheme.event:
+      return const Color(0xFFFFA07A);
+    case AlbumTheme.vintage:
+      return const Color(0xFFDEB887);
+    case AlbumTheme.bright:
+      return const Color(0xFFFFC107);
+    case AlbumTheme.night:
+      return Colors.black;
+    case AlbumTheme.pastel:
+      return const Color(0xFFB2DFDB);
+    default:
+      return kPrimaryColor;
+  }
+}
+
+
 class CreateAlbumScreen extends StatefulWidget {
   final Map<String, dynamic>? albumData;
   final List<dynamic>? selected;
@@ -58,7 +88,6 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
   bool a = false;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-
   Map<String, dynamic> _sharedUsers = {};
 
   bool isOwner = true;
@@ -66,10 +95,10 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
   bool canAddPhotos = true;
   bool canDeletePhotos = true;
   bool canManageAccess = true;
-
+  final ScrollController _scrollController = ScrollController();
   AlbumTheme _selectedTheme = AlbumTheme.classic;
   late AnimationController _loadingController;
-
+  int _currentStep = 0;
   @override
   void initState() {
     super.initState();
@@ -96,7 +125,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
             if (userPerms is Map) {
               canEditSettings = (userPerms['editAlbumSettings'] == true ||
                   userPerms['manageAccess'] == true);
-              canAddPhotos = true;
+              canAddPhotos = userPerms['addPhotos'] == true;
               canDeletePhotos = userPerms['deletePhotos'] == true;
               canManageAccess = userPerms['manageAccess'] == true;
             } else {
@@ -127,6 +156,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
   @override
   void dispose() {
     _loadingController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -205,30 +235,35 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     });
   }
 
+  Future<void> _scrollToTop() async {
+    await _scrollController.animateTo(0,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+  }
+
   List<Widget> _buildPermissionIcons(Map<String, bool> permissions) {
     List<Widget> icons = [];
     if (permissions['deletePhotos'] == true) {
       icons.add(Tooltip(
         message: 'Удаление фотографий',
-        child: Icon(Icons.delete, size: 18, color: Colors.red),
+        child: Icon(Icons.delete, size: 18, color: Colors.red.shade300),
       ));
     }
     if (permissions['addPhotos'] == true) {
       icons.add(Tooltip(
         message: 'Добавление фотографий',
-        child: Icon(Icons.add_a_photo, size: 18, color: Colors.green),
+        child: Icon(Icons.add_a_photo, size: 18, color: Colors.green.shade300),
       ));
     }
     if (permissions['editAlbumSettings'] == true) {
       icons.add(Tooltip(
         message: 'Редактирование настроек',
-        child: Icon(Icons.edit, size: 18, color: Colors.blue),
+        child: Icon(Icons.edit, size: 18, color: Colors.blue.shade300),
       ));
     }
     if (permissions['manageAccess'] == true) {
       icons.add(Tooltip(
         message: 'Настройка доступов',
-        child: Icon(Icons.security, size: 18, color: Colors.orange),
+        child: Icon(Icons.security, size: 18, color: Colors.orange.shade300),
       ));
     }
     if (icons.isEmpty) {
@@ -239,82 +274,6 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     }
     return icons;
   }
-
-  Widget _buildSharedUserList() {
-  final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
-  final entries = (isOwner)
-      ? _sharedUsers.entries.toList()
-      : _sharedUsers.entries.where((entry) => entry.key != currentUserUid).toList();
-
-  if (entries.isEmpty) {
-    return const Text(
-      "Нет пользователей для доступа.",
-      style: TextStyle(color: Colors.white),
-    );
-  }
-  return Column(
-    children: entries.map((entry) {
-      final uid = entry.key;
-      final data = entry.value;
-      final permissions = data['permissions'] as Map<String, bool>;
-      final nickname = data['nickname'] as String? ?? '';
-      final email = data['email'] as String? ?? '';
-      final displayName = nickname.isNotEmpty ? nickname : uid;
-      return Card(
-        color: Colors.white.withOpacity(0.9),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.symmetric(vertical: 4.0),
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          leading: CircleAvatar(
-            backgroundColor: Colors.blueAccent,
-            child: Text(
-              displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-          title: Text(
-            displayName,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (email.isNotEmpty)
-                Text(email, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              const SizedBox(height: 4),
-              Row(
-                children: _buildPermissionIcons(permissions)
-                    .map((icon) => Padding(
-                          padding: const EdgeInsets.only(right: 4.0),
-                          child: icon,
-                        ))
-                    .toList(),
-              ),
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit, color: Color.fromARGB(255, 102, 104, 105)),
-                onPressed: () => _editPermissionForUser(uid),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                onPressed: () {
-                  setState(() {
-                    _sharedUsers.remove(uid);
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList(),
-  );
-}
 
 
   Future<void> _editPermissionForUser(String uid) async {
@@ -329,7 +288,8 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     }
   }
 
-  Future<Map<String, bool>?> _choosePermissions({Map<String, bool>? initialPermissions}) async {
+  Future<Map<String, bool>?> _choosePermissions(
+      {Map<String, bool>? initialPermissions}) async {
     Map<String, bool> permissions = {
       'deletePhotos': initialPermissions?['deletePhotos'] ?? false,
       'addPhotos': initialPermissions?['addPhotos'] ?? false,
@@ -370,7 +330,12 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text("Выберите права доступа"),
+              backgroundColor: kAppBarColor.withOpacity(0.9),
+              title: const Text(
+                "Выберите права доступа",
+                style: TextStyle(
+                    color: kBackgroundColor, fontWeight: FontWeight.bold),
+              ),
               content: SingleChildScrollView(
                 child: Wrap(
                   spacing: 8,
@@ -378,6 +343,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
                   children: permissionOptions.map((option) {
                     final key = option['key'] as String;
                     return FilterChip(
+                      backgroundColor: kBackgroundColor.withOpacity(0.8),
                       label: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -385,7 +351,8 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
                               color: option['color'] as Color, size: 18),
                           const SizedBox(width: 4),
                           Text(option['label'] as String,
-                              style: const TextStyle(fontSize: 12)),
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.black87)),
                         ],
                       ),
                       selected: permissions[key]!,
@@ -394,7 +361,8 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
                           permissions[key] = selected;
                         });
                       },
-                      selectedColor: (option['color'] as Color).withOpacity(0.2),
+                      selectedColor:
+                          (option['color'] as Color).withOpacity(0.3),
                     );
                   }).toList(),
                 ),
@@ -402,11 +370,13 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, null),
-                  child: const Text("Отмена"),
+                  child: const Text("Отмена",
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, permissions),
-                  child: const Text("ОК"),
+                  child:
+                      const Text("ОК", style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -416,247 +386,331 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     );
   }
 
-  Widget _buildThemeSelector() {
+  Widget _buildAlbumDetailsStep() {
+    return _buildAlbumDetailsCard();
+  }
+
+  Widget _buildAlbumDetailsCard() {
     return Card(
-      color: Colors.white.withOpacity(0.8),
+      color: kBackgroundColor,
+      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: DropdownButton<AlbumTheme>(
-          value: _selectedTheme,
-          isExpanded: true,
-          underline: Container(),
-          items: AlbumTheme.values.map((theme) {
-            return DropdownMenuItem(
-              value: theme,
-              child: Text(
-                _getThemeName(theme),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              enabled: isOwner || canEditSettings,
+              controller: _nameController,
+              style: const TextStyle(color: Colors.black87),
+              decoration: InputDecoration(
+                labelText: "Название альбома",
+                labelStyle: TextStyle(color: kPrimaryColor),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: kPrimaryColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: kAccentColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-            );
-          }).toList(),
-          onChanged: canEditSettings
-              ? (newValue) {
+            ),
+            const SizedBox(height: 16),
+Row(
+  children: [
+    const Text(
+      "Тема:",
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        color: Colors.black87,
+      ),
+    ),
+    const SizedBox(width: 8),
+    Expanded(
+      child: GestureDetector(
+        onTap: (isOwner || canEditSettings)
+            ? () async {
+                final selectedTheme = await showDialog<AlbumTheme>(
+                  context: context,
+                  builder: (context) {
+                    return SimpleDialog(
+                      title: const Text("Выберите тему"),
+                      children: AlbumTheme.values.map((theme) {
+                        return SimpleDialogOption(
+                          onPressed: () => Navigator.pop(context, theme),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 16,
+                                height: 16,
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _getThemeColor(theme),
+                                ),
+                              ),
+                              Text(_getThemeName(theme)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                );
+                if (selectedTheme != null) {
                   setState(() {
-                    _selectedTheme = newValue!;
+                    _selectedTheme = selectedTheme;
                   });
                 }
-              : null,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlbumForm() {
-    final bool canEditAlbumSettings = isOwner || canEditSettings;
-
-    return Column(
-      children: [
-        _buildCustomAppBar(),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Card(
-                  color: Colors.white.withOpacity(0.8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    enabled: canEditAlbumSettings,
-                    decoration: const InputDecoration(
-                      labelText: "Название альбома",
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(12),
-                    ),
-                    onChanged: (value) =>
-                        setState(() => _nameController.text = value),
-                    controller: _nameController,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildThemeSelector(),
-                const SizedBox(height: 16),
-                Text(
-                  "Продолжительность показа фото: ${_duration.toStringAsFixed(1)} сек",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                Slider(
-                  value: _duration,
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  label: "${_duration.toStringAsFixed(1)} сек",
-                  onChanged: canEditAlbumSettings
-                      ? (value) {
-                          setState(() {
-                            _duration = value;
-                          });
-                        }
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              }
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: (isOwner || canEditSettings) ? kAccentColor.withOpacity(0.2) : Colors.grey[300],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _getThemeColor(_selectedTheme),
                     ),
                   ),
-                  onPressed: _pickPhotos,
-                  icon: const Icon(Icons.add_photo_alternate),
-                  label: const Text("+ Добавить фото"),
-                ),
-                const SizedBox(height: 16),
-                _selectedPhotos.isEmpty
-                    ? const Text("Выбранных фотографий пока нет",
-                        style: TextStyle(color: Colors.white))
-                    : (canEditAlbumSettings
-                        ? _buildEditablePhotosPreview()
-                        : _buildViewOnlyPhotosPreview()),
-                if (isOwner || canManageAccess) ...[
-                  const SizedBox(height: 16),
-                  const Divider(color: Colors.white70),
-                  const SizedBox(height: 8),
-                  const Text(
-                    "Поделиться альбомом:",
+                  Text(
+                    _getThemeName(_selectedTheme),
                     style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildSharedUserList(),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      color: (isOwner || canEditSettings) ? kAppBarColor : Colors.grey[700],
+                      fontWeight: FontWeight.bold,
                     ),
-                    onPressed: _addSharedUser,
-                    icon: const Icon(Icons.person_add),
-                    label: const Text("Добавить пользователя"),
                   ),
                 ],
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: _saveAlbum,
-                  child: Text(
-                    widget.albumData == null
-                        ? "Сохранить альбом"
-                        : "Сохранить изменения",
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: _exportToPDF,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text("Экспорт в PDF"),
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
+              ),
+              (isOwner || canEditSettings)
+                  ? const Icon(Icons.arrow_drop_down, color: kAppBarColor)
+                  : const Icon(Icons.lock, color: Colors.grey),
+            ],
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ),
+  ],
+),
 
-  Widget _buildEditablePhotosPreview() {
-    return Container(
-      height: 120,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ReorderableListView(
-        scrollDirection: Axis.horizontal,
-        onReorder: (oldIndex, newIndex) {
-          setState(() {
-            if (newIndex > oldIndex) newIndex -= 1;
-            final item = _selectedPhotos.removeAt(oldIndex);
-            _selectedPhotos.insert(newIndex, item);
-          });
-        },
-        children: List.generate(_selectedPhotos.length, (index) {
-          final photoItem = _selectedPhotos[index];
-          final key = (widget.albumData != null)
-              ? ValueKey(photoItem['id'] ?? index)
-              : (photoItem['type'] == 'server')
-                  ? ValueKey(photoItem['photo']?['id'] ?? index)
-                  : ValueKey(photoItem['photo']?.title ?? index);
-          return Container(
-            key: key,
-            margin: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: _buildPhotoPreview(photoItem, index),
-          );
-        }),
-      ),
-    );
-  }
 
-  Widget _buildViewOnlyPhotosPreview() {
-    return Container(
-      height: 120,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: List.generate(_selectedPhotos.length, (index) {
-          final photoItem = _selectedPhotos[index];
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: _buildPhotoPreview(photoItem, index),
-          );
-        }),
+            const SizedBox(height: 16),
+            Text(
+              "Продолжительность показа фото: ${_duration.toStringAsFixed(1)} сек",
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            Slider(
+              value: _duration,
+              min: 1,
+              max: 10,
+              divisions: 9,
+              label: "${_duration.toStringAsFixed(1)} сек",
+              activeColor: kPrimaryColor,
+              inactiveColor: kPrimaryColor.withOpacity(0.3),
+              onChanged: isOwner || canEditSettings
+                  ? (value) {
+                      setState(() {
+                        _duration = value;
+                      });
+                    }
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildCustomAppBar() {
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      color: Colors.black.withOpacity(0.1),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+  Widget _buildPhotosStep() {
+    return _buildPhotosCard();
+  }
+
+  Widget _buildPhotosCard() {
+    return Card(
+      color: kBackgroundColor,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                backgroundColor: kAccentColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: (isOwner || canAddPhotos)
+                  ? _pickPhotos
+                  : () {
+                      _showCustomMessage(
+                          "У вас нет прав на добавление фотографий",
+                          icon: Icons.error_outline,
+                          backgroundColor: Colors.redAccent);
+                    },
+              icon: const Icon(Icons.add_photo_alternate),
+              label: const Text("+ Добавить фото"),
+            ),
+            const SizedBox(height: 16),
+            _selectedPhotos.isEmpty
+                ? const Center(
+                    child: Text(
+                      "Выбранных фотографий пока нет",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.black54),
+                    ),
+                  )
+                : SizedBox(
+                    height: 120,
+                    child: (isOwner || canEditSettings)
+                        ? ReorderableListView(
+                            scrollDirection: Axis.horizontal,
+                            onReorder: (oldIndex, newIndex) {
+                              setState(() {
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                final item = _selectedPhotos.removeAt(oldIndex);
+                                _selectedPhotos.insert(newIndex, item);
+                              });
+                            },
+                            children:
+                                List.generate(_selectedPhotos.length, (index) {
+                              final photoItem = _selectedPhotos[index];
+                              final key = (widget.albumData != null)
+                                  ? ValueKey(photoItem['id'] ?? index)
+                                  : (photoItem['type'] == 'server')
+                                      ? ValueKey(
+                                          photoItem['photo']?['id'] ?? index)
+                                      : ValueKey(
+                                          photoItem['photo']?.title ?? index);
+                              return Container(
+                                key: key,
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 4.0),
+                                child: _buildPhotoPreview(photoItem, index),
+                              );
+                            }),
+                          )
+                        : ListView(
+                            scrollDirection: Axis.horizontal,
+                            children:
+                                List.generate(_selectedPhotos.length, (index) {
+                              final photoItem = _selectedPhotos[index];
+                              return Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 4.0),
+                                child: _buildPhotoPreview(photoItem, index),
+                              );
+                            }),
+                          ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSharingStep() {
+    return _buildSharedUsersCard();
+  }
+
+  Widget _buildSharedUsersCard() {
+    return Card(
+      color: kBackgroundColor,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Поделиться альбомом:",
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87),
+            ),
+            const SizedBox(height: 8),
+            _buildSharedUserList(),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+  style: ElevatedButton.styleFrom(
+    minimumSize: const Size(double.infinity, 50),
+    backgroundColor: kAccentColor,
+    shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12)),
+  ),
+  onPressed: canManageAccess ? _addSharedUser : null,
+  icon: const Icon(Icons.person_add),
+  label: const Text("Добавить пользователя"),
+),
+
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionsStep() {
+    return Card(
+      color: kBackgroundColor,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: _buildActionButtons(),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 50),
+            backgroundColor: kAccentColor,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          const SizedBox(width: 8),
-          Text(
+          onPressed: _saveAlbum,
+          child: Text(
             widget.albumData == null
-                ? "Создать фотоальбом"
-                : "Редактировать альбом",
-            style: const TextStyle(
-                fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                ? "Сохранить альбом"
+                : "Сохранить изменения",
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          const Spacer(),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 50),
+            backgroundColor: kAccentColor,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: _exportToPDF,
+          icon: const Icon(Icons.picture_as_pdf),
+          label: const Text("Экспорт в PDF",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 
@@ -664,11 +718,19 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     bool showDelete = isOwner || canDeletePhotos;
     Widget imageWidget;
     if (widget.albumData != null && photoItem['url'] != null) {
-      imageWidget = Image.network(photoItem['url'] ?? '',
-          width: 100, height: 100, fit: BoxFit.cover);
+      imageWidget = Image.network(
+        photoItem['url'] ?? '',
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+      );
     } else if (photoItem['type'] == 'server') {
-      imageWidget = Image.network(photoItem['photo']?['url'] ?? '',
-          width: 100, height: 100, fit: BoxFit.cover);
+      imageWidget = Image.network(
+        photoItem['photo']?['url'] ?? '',
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+      );
     } else {
       imageWidget = FutureBuilder<Uint8List?>(
         future: photoItem['photo']
@@ -750,39 +812,135 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
   }
 
   Future<void> _addSharedUser() async {
-  final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
-  final albumOwner = widget.albumData?['owner'];
-  final excludedUids = <String>[
-    if (currentUserUid != null) currentUserUid,
-    if (albumOwner != null) albumOwner,
-    ..._sharedUsers.keys,
-  ];
-  final result = await showSearch<Map<String, dynamic>?>(
-    context: context,
-    delegate: UserSearchDelegate(excludedUserIds: excludedUids),
-  );
-  if (result != null && result['uid'] != null) {
-    final permissions = await _choosePermissions();
-    if (permissions != null) {
-      setState(() {
-        _sharedUsers[result['uid']] = {
-          'nickname': result['nickname'] ?? '',
-          'email': result['email'] ?? '',
-          'permissions': permissions,
-        };
-      });
+    final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
+    final albumOwner = widget.albumData?['owner'];
+    final excludedUids = <String>[
+      if (currentUserUid != null) currentUserUid,
+      if (albumOwner != null) albumOwner,
+      ..._sharedUsers.keys,
+    ];
+    final result = await showSearch<Map<String, dynamic>?>(
+      context: context,
+      delegate: UserSearchDelegate(excludedUserIds: excludedUids),
+    );
+    if (result != null && result['uid'] != null) {
+      final permissions = await _choosePermissions();
+      if (permissions != null) {
+        setState(() {
+          _sharedUsers[result['uid']] = {
+            'nickname': result['nickname'] ?? '',
+            'email': result['email'] ?? '',
+            'permissions': permissions,
+          };
+        });
+      }
     }
   }
-}
 
+  Widget _buildSharedUserList() {
+    final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
+    final entries = (isOwner)
+        ? _sharedUsers.entries.toList()
+        : _sharedUsers.entries
+            .where((entry) => entry.key != currentUserUid)
+            .toList();
+
+    if (entries.isEmpty) {
+      return const Text(
+        "Нет пользователей для доступа.",
+        style: TextStyle(color: Colors.black54, fontWeight: FontWeight.bold),
+      );
+    }
+    return Column(
+  children: entries.map((entry) {
+    final uid = entry.key;
+    final data = entry.value;
+    final nickname = data['nickname'] as String? ?? '';
+    final email = data['email'] as String? ?? '';
+    return Card(
+      color: kBackgroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: kPrimaryColor),
+      ),
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: kPrimaryColor,
+              child: Text(
+                (nickname.isNotEmpty ? nickname : uid)[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nickname,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: kPrimaryColor,
+                    ),
+                    softWrap: true,
+                  ),
+                  if (email.isNotEmpty)
+                    Text(
+                      email,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: kPrimaryColor,
+                      ),
+                      softWrap: true,
+                    ),
+                ],
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit, color: kPrimaryColor),
+                  onPressed: () => _editPermissionForUser(uid),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.redAccent),
+                  onPressed: () {
+                    setState(() {
+                      _sharedUsers.remove(uid);
+                    });
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }).toList(),
+);
+
+  }
 
   Future<void> _saveAlbum() async {
     if (_nameController.text.isEmpty) {
-      _showCustomMessage("Введите название альбома.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Введите название альбома.",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
     }
     if (_selectedPhotos.isEmpty) {
-      _showCustomMessage("Выберите хотя бы одну фотографию.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Выберите хотя бы одну фотографию.",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
     }
     setState(() => _saving = true);
@@ -790,7 +948,8 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
       final firestore = FirebaseFirestore.instance;
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        _showCustomMessage("Ошибка: пользователь не авторизован.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+        _showCustomMessage("Ошибка: пользователь не авторизован.",
+            icon: Icons.error_outline, backgroundColor: Colors.redAccent);
         setState(() => _saving = false);
         return;
       }
@@ -811,26 +970,30 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
         }
       }
       if (photosData.isEmpty) {
-        _showCustomMessage("Ошибка: не удалось загрузить фотографии.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+        _showCustomMessage("Ошибка: не удалось загрузить фотографии.",
+            icon: Icons.error_outline, backgroundColor: Colors.redAccent);
         setState(() => _saving = false);
         return;
       }
-      final albumOwner = (widget.albumData != null &&
-              widget.albumData!.containsKey('owner'))
-          ? widget.albumData!['owner']
-          : currentUser.uid;
-          
+      final albumOwner =
+          (widget.albumData != null && widget.albumData!.containsKey('owner'))
+              ? widget.albumData!['owner']
+              : currentUser.uid;
       final albumData = {
         'name': _nameController.text,
         'duration': _duration,
         'createdAt': FieldValue.serverTimestamp(),
         'owner': albumOwner,
-        'sharedWith': _sharedUsers.map((key, value) => MapEntry(key, value['permissions'])),
+        'sharedWith': _sharedUsers
+            .map((key, value) => MapEntry(key, value['permissions'])),
         'photos': photosData,
         'theme': _selectedTheme.toString().split('.').last,
       };
       if (widget.albumData != null && widget.albumData!.containsKey('id')) {
-        await firestore.collection('albums').doc(widget.albumData!['id']).update(albumData);
+        await firestore
+            .collection('albums')
+            .doc(widget.albumData!['id'])
+            .update(albumData);
       } else {
         final docRef = await firestore.collection('albums').add(albumData);
         albumData['id'] = docRef.id;
@@ -840,17 +1003,20 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
         _nameController.text = '';
         _selectedPhotos.clear();
       });
-      _showCustomMessage("Альбом успешно ${widget.albumData != null ? 'отредактирован' : 'создан'}!");
+      _showCustomMessage(
+          "Альбом успешно ${widget.albumData != null ? 'отредактирован' : 'создан'}!");
       Navigator.pop(context, true);
     } catch (e) {
       setState(() => _saving = false);
-      _showCustomMessage("Ошибка: $e", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Ошибка: $e",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
     }
   }
 
   Future<void> _exportToPDF() async {
     if (_selectedPhotos.isEmpty) {
-      _showCustomMessage("Нет фотографий для экспорта.", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Нет фотографий для экспорта.",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
     }
     try {
@@ -965,7 +1131,8 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
                 ),
                 padding: const pw.EdgeInsets.all(8),
                 child: pw.Center(
-                  child: pw.Image(pw.MemoryImage(imageData!), fit: pw.BoxFit.contain),
+                  child: pw.Image(pw.MemoryImage(imageData!),
+                      fit: pw.BoxFit.contain),
                 ),
               );
             },
@@ -975,13 +1142,17 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
       final fileName = _nameController.text.trim().isNotEmpty
           ? _nameController.text.trim()
           : "album";
-      await Printing.sharePdf(bytes: await pdf.save(), filename: '$fileName.pdf');
+      await Printing.sharePdf(
+          bytes: await pdf.save(), filename: '$fileName.pdf');
     } catch (e) {
-      _showCustomMessage("Ошибка при экспорте в PDF: $e", icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      _showCustomMessage("Ошибка при экспорте в PDF: $e",
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
     }
   }
+
   void _showCustomMessage(String message,
-      {IconData icon = Icons.check_circle_outline, Color backgroundColor = Colors.green}) {
+      {IconData icon = Icons.check_circle_outline,
+      Color backgroundColor = Colors.green}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: backgroundColor,
@@ -989,33 +1160,14 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
           children: [
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
+            Expanded(
+                child:
+                    Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: SafeArea(child: _buildAlbumForm()),
-          ),
-          if (_saving) _buildSavingOverlay(),
-        ],
       ),
     );
   }
@@ -1037,10 +1189,10 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
               },
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+                  gradient: LinearGradient(
+                    colors: [kPrimaryColor, kAccentColor],
                   ),
                 ),
                 child: const Icon(
@@ -1065,5 +1217,150 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen>
     );
   }
 
+  List<Step> _buildSteps() {
+    return [
+      Step(
+        title: const Text("Настройки"),
+        content: _buildAlbumDetailsStep(),
+        isActive: _currentStep >= 0,
+        state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+      ),
+      Step(
+        title: const Text("Фотографии"),
+        content: _buildPhotosStep(),
+        isActive: _currentStep >= 1,
+        state: _currentStep > 1 ? StepState.complete : StepState.indexed,
+      ),
+      Step(
+        title: const Text("Доступ"),
+        content: _buildSharingStep(),
+        isActive: _currentStep >= 2,
+        state: _currentStep > 2 ? StepState.complete : StepState.indexed,
+      ),
+      Step(
+        title: const Text("Действия"),
+        content: _buildActionsStep(),
+        isActive: _currentStep >= 3,
+        state: StepState.indexed,
+      ),
+    ];
+  }
 
+   @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: kPrimaryColor,
+        title: Text(
+          widget.albumData == null
+              ? "Создать фотоальбом"
+              : "Редактировать альбом",
+          style: const TextStyle(color: kBackgroundColor),
+        ),
+        iconTheme: const IconThemeData(color: kBackgroundColor),
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [kBackgroundColor, kPrimaryColor.withOpacity(0.3)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.of(context).size.height -
+                        kToolbarHeight -
+                        MediaQuery.of(context).padding.top,
+                  ),
+                  child: Column(
+                    children: [
+                      Theme(
+                        data: Theme.of(context)
+                            .copyWith(canvasColor: Colors.transparent),
+                        child: Stepper(
+                          type: StepperType.vertical,
+                          currentStep: _currentStep,
+                          steps: _buildSteps(),
+                          onStepTapped: (step) {
+                            setState(() {
+                              _currentStep = step;
+                            });
+                            _scrollToTop();
+                          },
+                          onStepContinue: () {
+                            if (_currentStep < _buildSteps().length - 1) {
+                              setState(() {
+                                _currentStep++;
+                              });
+                              _scrollToTop();
+                            }
+                          },
+                          onStepCancel: () {
+                            if (_currentStep > 0) {
+                              setState(() {
+                                _currentStep--;
+                              });
+                              _scrollToTop();
+                            }
+                          },
+                          controlsBuilder: (context, details) {
+                            if (_currentStep < _buildSteps().length - 1) {
+                              return Row(
+                                children: [
+                                  if (_currentStep > 0)
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        details.onStepCancel?.call();
+                                        _scrollToTop();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: kAccentColor,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12))),
+                                      child: const Text("Назад"),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      details.onStepContinue?.call();
+                                      _scrollToTop();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: kAccentColor,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12))),
+                                    child: const Text("Далее"),
+                                  ),
+                                ],
+                              );
+                            } else {
+                              return Container();
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_saving)
+            Positioned.fill(
+              child: _buildSavingOverlay(),
+            ),
+        ],
+      ),
+    );
+  }
 }
