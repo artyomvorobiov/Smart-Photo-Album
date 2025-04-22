@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'login_screen.dart'; 
+
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
@@ -11,14 +16,16 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
   void _showCustomMessage(String message,
       {IconData icon = Icons.check_circle_outline,
       Color backgroundColor = Colors.green}) {
@@ -30,11 +37,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Icon(icon, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
+                child:
+                    Text(message, style: const TextStyle(color: Colors.white))),
           ],
         ),
         behavior: SnackBarBehavior.floating,
@@ -45,24 +49,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
-      _showCustomMessage(
-        'Пароли не совпадают.',
-        icon: Icons.error_outline,
-        backgroundColor: Colors.redAccent,
-      );
+    if (_passwordController.text.trim().isEmpty) {
+      _showCustomMessage('Пароль не может быть пустым.',
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
       return;
     }
-
+    if (_passwordController.text.trim() !=
+        _confirmPasswordController.text.trim()) {
+      _showCustomMessage('Пароли не совпадают.',
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
+      return;
+    }
     try {
       final UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
       final user = userCredential.user;
-
       if (user != null) {
         await user.sendEmailVerification();
         await _firestore.collection('users').doc(user.uid).set({
@@ -73,17 +77,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'nickname': '',
           'privacySetting': 'От всех пользователей',
           'fcmTokens': [],
+          'storageUsed': 0,
+          'tariff': 'basic',
+          'storageQuota': 100 * 1024 * 1024,
         });
-
         _showCustomMessage(
           'Регистрация успешна! Проверьте вашу почту для подтверждения.',
         );
-
-        Navigator.pushReplacementNamed(context, '/login');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LoginScreen(
+              initialEmail: _emailController.text.trim(),
+              initialPassword: _passwordController.text.trim(),
+            ),
+          ),
+        );
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage;
-
       switch (e.code) {
         case 'weak-password':
           errorMessage = 'Пароль слишком короткий. Минимум 6 символов.';
@@ -98,12 +110,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           errorMessage = e.message ?? 'Произошла ошибка. Попробуйте еще раз.';
           break;
       }
-
-      _showCustomMessage(
-        errorMessage,
-        icon: Icons.error_outline,
-        backgroundColor: Colors.redAccent,
-      );
+      _showCustomMessage(errorMessage,
+          icon: Icons.error_outline, backgroundColor: Colors.redAccent);
     }
   }
 
@@ -122,10 +130,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 height: 200,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      Color(0xFF89CFFD),
-                      Color(0xFFB084CC),
-                    ],
+                    colors: [kPrimaryColor, kAppBarColor],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -138,7 +143,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white.withOpacity(0.9),
+                        color: kBackgroundColor.withOpacity(0.9),
                       ),
                     ),
                   ),
@@ -153,7 +158,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Container(
                   margin: const EdgeInsets.only(top: 100),
                   child: Card(
-                    color: Colors.white.withOpacity(0.85),
+                    color: kBackgroundColor.withOpacity(0.95),
                     elevation: 6,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -171,7 +176,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple.shade700,
+                              color: kPrimaryColor,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -182,7 +187,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               prefixIcon: const Icon(Icons.email),
                               filled: true,
                               fillColor: Colors.white,
-                              border: OutlineInputBorder(
+                              labelStyle: TextStyle(color: kPrimaryColor),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kPrimaryColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kAccentColor),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
@@ -219,7 +230,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               filled: true,
                               fillColor: Colors.white,
-                              border: OutlineInputBorder(
+                              labelStyle: TextStyle(color: kPrimaryColor),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kPrimaryColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kAccentColor),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
@@ -251,13 +268,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     _obscureConfirmPassword
                                         ? Icons.visibility_off
                                         : Icons.visibility,
-                                    key: ValueKey<bool>(_obscureConfirmPassword),
+                                    key:
+                                        ValueKey<bool>(_obscureConfirmPassword),
                                   ),
                                 ),
                               ),
                               filled: true,
                               fillColor: Colors.white,
-                              border: OutlineInputBorder(
+                              labelStyle: TextStyle(color: kPrimaryColor),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kPrimaryColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: kAccentColor),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
@@ -266,7 +290,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           const SizedBox(height: 24),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.deepPurple,
+                              backgroundColor: kAccentColor,
                               foregroundColor: Colors.white,
                               minimumSize: const Size(double.infinity, 50),
                               shape: RoundedRectangleBorder(
