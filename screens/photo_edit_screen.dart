@@ -11,6 +11,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:trip/services/photo_service.dart';
 
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853);
+
 class PhotoEditScreen extends StatefulWidget {
   final AssetEntity? localPhoto;
   final Map<String, dynamic>? serverPhoto;
@@ -102,15 +107,15 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
       sourcePath: tempFile.path,
       uiSettings: [
         AndroidUiSettings(
-          toolbarTitle: '', 
-          toolbarColor: const Color(0xFFB084CC).withOpacity(0.7),
+          toolbarTitle: 'Обрезка изображения',
+          toolbarColor: kAppBarColor,
           toolbarWidgetColor: Colors.white,
           initAspectRatio: CropAspectRatioPreset.original,
           lockAspectRatio: false,
-          activeControlsWidgetColor: const Color(0xFFB084CC).withOpacity(0.7),
+          activeControlsWidgetColor: kAccentColor,
         ),
         IOSUiSettings(
-          title: '', 
+          title: 'Обрезка изображения',
         ),
       ],
     );
@@ -183,9 +188,14 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kBackgroundColor,
       appBar: AppBar(
-        title: const SizedBox.shrink(),
-        backgroundColor: const Color(0xFFB084CC).withOpacity(0.7),
+        title: const Text(
+          "Редактирование фото",
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: kAppBarColor,
+        iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
           IconButton(
@@ -198,15 +208,15 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF89CFFD), Color(0xFFB084CC)],
+            colors: [kBackgroundColor, const Color(0xFFE5D8C8)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(child: CircularProgressIndicator(color: kPrimaryColor))
             : Column(
                 children: [
                   Expanded(
@@ -215,7 +225,7 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
                             editedImageBytes!,
                             fit: BoxFit.contain,
                           )
-                        : const Center(child: Text("Не удалось загрузить изображение", style: TextStyle(color: Colors.white))),
+                        : Center(child: Text("Не удалось загрузить изображение", style: TextStyle(color: kPrimaryColor))),
                   ),
                   const SizedBox(height: 12),
                   Padding(
@@ -225,11 +235,12 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
                         Expanded(
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              foregroundColor: const Color(0xFFB084CC),
-                              backgroundColor: Colors.white.withOpacity(0.9),
+                              backgroundColor: Colors.white,
+                              foregroundColor: kPrimaryColor,
                               elevation: 4,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: kPrimaryColor.withOpacity(0.5)),
                               ),
                               textStyle: const TextStyle(fontSize: 12),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -243,11 +254,12 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
                         Expanded(
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              foregroundColor: const Color(0xFFB084CC),
-                              backgroundColor: Colors.white.withOpacity(0.9),
+                              backgroundColor: Colors.white,
+                              foregroundColor: kPrimaryColor,
                               elevation: 4,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: kPrimaryColor.withOpacity(0.5)),
                               ),
                               textStyle: const TextStyle(fontSize: 12),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -261,11 +273,12 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
                         Expanded(
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              foregroundColor: const Color(0xFFB084CC),
-                              backgroundColor: Colors.white.withOpacity(0.9),
+                              backgroundColor: Colors.white,
+                              foregroundColor: kPrimaryColor,
                               elevation: 4,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: kPrimaryColor.withOpacity(0.5)),
                               ),
                               textStyle: const TextStyle(fontSize: 12),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -285,3 +298,4 @@ class _PhotoEditScreenState extends State<PhotoEditScreen>
     );
   }
 }
+ 
