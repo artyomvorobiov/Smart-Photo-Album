@@ -20,102 +20,124 @@ class PhotoService {
   List<Map<String, dynamic>> _serverPhotos = [];
   final minio = Minio(
     endPoint: '****',
-    port: '****',
+    port: ****,
     accessKey: '****',
     secretKey: '****',
-    useSSL: '****',
+    useSSL: ****,
   );
 
-  Future<String> uploadPhotoToServer(AssetEntity localPhoto) async {
-    try {
-      User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        print("Пользователь не авторизован");
-        return '';
-      }
-      File file = await localPhoto.file as File;
-      Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
-      DateTime creationDate = DateTime.now();
-      if (exifData.containsKey('DateTimeOriginal')) {
-        String? dateString = exifData['DateTimeOriginal']?.printable;
-        if (dateString != null) {
-          try {
-            creationDate = _parseExifDate(dateString);
-          } catch (e) {
-            print("Ошибка парсинга даты EXIF: $e");
-          }
-        }
-      }
-      String bucketName = 'photo';
-      final existingPhoto = await FirebaseFirestore.instance
-          .collection('photos')
-          .where('id', isEqualTo: localPhoto.title)
-          .get();
-      if (existingPhoto.docs.isNotEmpty) {
-        print("Фото уже существует в Firestore.");
-        return existingPhoto.docs.first['url'];
-      }
-      bool bucketExists = await minio.bucketExists(bucketName);
-      if (!bucketExists) {
-        await minio.makeBucket(bucketName);
-      }
-      var stream = file.openRead().transform(
-        StreamTransformer<List<int>, Uint8List>.fromHandlers(
-          handleData: (data, sink) {
-            sink.add(Uint8List.fromList(data));
-          },
-        ),
-      );
-      await minio.putObject(bucketName, localPhoto.title!, stream);
-      String downloadUrl = await minio.presignedGetObject(
-        bucketName,
-        localPhoto.title!,
-        expires: 7 * 24 * 3600,
-      );
-      final List<String> tags = await _getTranslatedImageLabels(file);
-      String extractedText = '';
-      try {
-        extractedText = await FlutterTesseractOcr.extractText(
-          file.path,
-          language: 'rus+eng',
-        );
-        extractedText = extractedText.trim();
-      } catch (e) {
-        print("Ошибка OCR с помощью Tesseract: $e");
-      }
-      
-      await FirebaseFirestore.instance.collection('photos').doc(localPhoto.title).set({
-        'id': localPhoto.title,
-        'url': downloadUrl,
-        'timestamp': DateTime.now(),
-        'creation_date': creationDate.toIso8601String(),
-        'exif': {
-          'EXIF DateTimeOriginal': _convertToExifDateFormat(localPhoto.createDateTime.toIso8601String()),
-        },
-        'tags': tags,
-        'ocrText': extractedText,
-        'owner': {
-          'uid': currentUser.uid,
-          'email': currentUser.email ?? "Не указан",
-          'displayName': currentUser.displayName ?? "Аноним",
-          'photoURL': currentUser.photoURL ?? "",
-        },
-        'sharedWith': {},
-        'folderIds': [],         
-        'folderShares': {},
-        'favorites': [],
-        'latitude': '',
-        'longitude': '',
-        'address': '',
-      });
-
-      print("Файл успешно загружен в MinIO, информация сохранена в Firestore");
-      return downloadUrl;
-    } catch (e) {
-      print("Ошибка при загрузке изображения: $e");
+Future<String> uploadPhotoToServer(AssetEntity localPhoto) async {
+  try {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      print("Пользователь не авторизован");
       return '';
     }
+    File file = await localPhoto.file as File;
+    int fileSize = await file.length();
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+    if (userDoc.exists) {
+      Map<String, dynamic> data = userDoc.data()!;
+      int storageUsed = data['storageUsed'] ?? 0;
+      int storageQuota = data['storageQuota'] ?? (100 * 1024 * 1024);
+      int availableBytes = storageQuota - storageUsed;
+      
+      if (fileSize > availableBytes) {
+        print("Недостаточно места. Доступно: $availableBytes байт, требуется: $fileSize байт.");
+        return '';
+      }
+    } else {
+      print("Документ профиля не найден, квота по умолчанию 100 МБ.");
+    }
+    Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
+    DateTime creationDate = DateTime.now();
+    if (exifData.containsKey('DateTimeOriginal')) {
+      String? dateString = exifData['DateTimeOriginal']?.printable;
+      if (dateString != null) {
+        try {
+          creationDate = _parseExifDate(dateString);
+        } catch (e) {
+          print("Ошибка парсинга даты EXIF: $e");
+        }
+      }
+    }
+    String bucketName = 'photo';
+    final existingPhoto = await FirebaseFirestore.instance
+        .collection('photos')
+        .where('id', isEqualTo: localPhoto.title)
+        .get();
+    if (existingPhoto.docs.isNotEmpty) {
+      print("Фото уже существует в Firestore.");
+      return existingPhoto.docs.first['url'];
+    }
+    bool bucketExists = await minio.bucketExists(bucketName);
+    if (!bucketExists) {
+      await minio.makeBucket(bucketName);
+    }
+    var stream = file.openRead().transform(
+      StreamTransformer<List<int>, Uint8List>.fromHandlers(
+        handleData: (data, sink) {
+          sink.add(Uint8List.fromList(data));
+        },
+      ),
+    );
+    await minio.putObject(bucketName, localPhoto.title!, stream);
+    String downloadUrl = await minio.presignedGetObject(
+      bucketName,
+      localPhoto.title!,
+      expires: 7 * 24 * 3600,
+    );
+    final List<String> tags = await _getTranslatedImageLabels(file);
+    String extractedText = '';
+    try {
+      extractedText = await FlutterTesseractOcr.extractText(
+        file.path,
+        language: 'rus+eng',
+      );
+      extractedText = extractedText.trim();
+    } catch (e) {
+      print("Ошибка OCR с помощью Tesseract: $e");
+    }
+    await FirebaseFirestore.instance.collection('photos').doc(localPhoto.title).set({
+      'id': localPhoto.title,
+      'url': downloadUrl,
+      'timestamp': DateTime.now(),
+      'creation_date': creationDate.toIso8601String(),
+      'size': fileSize,
+      'exif': {
+        'EXIF DateTimeOriginal': _convertToExifDateFormat(localPhoto.createDateTime.toIso8601String()),
+      },
+      'tags': tags,
+      'ocrText': extractedText,
+      'owner': {
+        'uid': currentUser.uid,
+        'email': currentUser.email ?? "Не указан",
+        'displayName': currentUser.displayName ?? "Аноним",
+        'photoURL': currentUser.photoURL ?? "",
+      },
+      'sharedWith': {},
+      'folderIds': [],
+      'folderShares': {},
+      'favorites': [],
+      'latitude': '',
+      'longitude': '',
+      'address': '',
+    });
+    await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).update({
+      'storageUsed': FieldValue.increment(fileSize),
+    });
+
+    print("Файл успешно загружен в MinIO, информация сохранена в Firestore");
+    return downloadUrl;
+  } catch (e) {
+    print("Ошибка при загрузке изображения: $e");
+    return '';
   }
+}
+
 
   Future<bool> deleteServerPhoto(Map<String, dynamic> serverPhoto) async {
     try {
@@ -335,91 +357,106 @@ class PhotoService {
   
 
   Future<void> pickAndUploadImage(AssetEntity localPhoto, gm.LatLng? location, {String? address}) async {
-    try {
-      User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        print("Пользователь не авторизован");
+  try {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      print("Пользователь не авторизован");
+      return;
+    }
+    File file = await localPhoto.file as File;
+    int fileSize = await file.length();
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+    if (userDoc.exists) {
+      Map<String, dynamic> data = userDoc.data()!;
+      int storageUsed = data['storageUsed'] ?? 0;
+      int storageQuota = data['storageQuota'] ?? (100 * 1024 * 1024);
+      int availableBytes = storageQuota - storageUsed;
+      if (fileSize > availableBytes) {
+        print("Недостаточно места. Доступно: $availableBytes байт, требуется: $fileSize байт.");
         return;
       }
-      File file = await localPhoto.file as File;
-      Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
-      DateTime creationDate = DateTime.now();
-      if (exifData.containsKey('DateTimeOriginal')) {
-        String? dateString = exifData['DateTimeOriginal']?.printable;
-        if (dateString != null) {
-          try {
-            creationDate = _parseExifDate(dateString);
-          } catch (e) {
-            print("Ошибка парсинга даты EXIF: $e");
-          }
+    } else {
+      print("Документ пользователя не найден");
+      return;
+    }
+    Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
+    DateTime creationDate = DateTime.now();
+    if (exifData.containsKey('DateTimeOriginal')) {
+      String? dateString = exifData['DateTimeOriginal']?.printable;
+      if (dateString != null) {
+        try {
+          creationDate = _parseExifDate(dateString);
+        } catch (e) {
+          print("Ошибка парсинга даты EXIF: $e");
         }
       }
-      String bucketName = 'photo';
-      bool bucketExists = await minio.bucketExists(bucketName);
-      if (!bucketExists) {
-        await minio.makeBucket(bucketName);
-      }
-      var stream = file.openRead().transform(
-        StreamTransformer<List<int>, Uint8List>.fromHandlers(
-          handleData: (data, sink) {
-            sink.add(Uint8List.fromList(data));
-          },
-        ),
-      );
-      await minio.putObject(bucketName, localPhoto.title!, stream);
-      String downloadUrl = await minio.presignedGetObject(
-        bucketName,
-        localPhoto.title!,
-        expires: 7 * 24 * 3600,
-      );
-      final List<String> tags = await _getTranslatedImageLabels(file);
-      String extractedText = '';
-      try {
-        extractedText = await FlutterTesseractOcr.extractText(
-          file.path,
-          language: 'rus+eng',
-        );
-        extractedText = extractedText.trim();
-      } catch (e) {
-        print("Ошибка OCR с помощью Tesseract: $e");
-      }
-      await FirebaseFirestore.instance
-          .collection('photos')
-          .doc(localPhoto.title)
-          .set({
-        'id': localPhoto.title,
-        'url': downloadUrl,
-        'timestamp': DateTime.now(),
-        'creation_date': creationDate.toIso8601String(),
-        'exif': {
-          'EXIF DateTimeOriginal': _convertToExifDateFormat(localPhoto.createDateTime.toIso8601String()),
-        },
-        'tags': tags,
-        'ocrText': extractedText,
-        'owner': {
-          'uid': currentUser.uid,
-          'email': currentUser.email ?? "Не указан",
-          'displayName': currentUser.displayName ?? "Аноним",
-          'photoURL': currentUser.photoURL ?? "",
-        },
-        'sharedWith': {},
-        'folderIds': [],
-        'folderShares': {},
-        if (location != null) ...{
-          'latitude': location.latitude,
-          'longitude': location.longitude,
-          'address': address ?? '',
-        } else ...{
-          'latitude': '',
-          'longitude': '',
-          'address': '',
-        },
-      });
-      print("Файл успешно загружен в MinIO, информация сохранена в Firestore");
-    } catch (e) {
-      print("Ошибка при загрузке изображения: $e");
     }
+    
+    String bucketName = 'photo';
+    bool bucketExists = await minio.bucketExists(bucketName);
+    if (!bucketExists) {
+      await minio.makeBucket(bucketName);
+    }
+    var stream = file.openRead().transform(
+      StreamTransformer<List<int>, Uint8List>.fromHandlers(
+        handleData: (data, sink) {
+          sink.add(Uint8List.fromList(data));
+        },
+      ),
+    );
+    await minio.putObject(bucketName, localPhoto.title!, stream);
+    String downloadUrl = await minio.presignedGetObject(
+      bucketName,
+      localPhoto.title!,
+      expires: 7 * 24 * 3600,
+    );
+    final List<String> tags = await _getTranslatedImageLabels(file);
+    String extractedText = '';
+    try {
+      extractedText = await FlutterTesseractOcr.extractText(file.path, language: 'rus+eng');
+      extractedText = extractedText.trim();
+    } catch (e) {
+      print("Ошибка OCR с помощью Tesseract: $e");
+    }
+    await FirebaseFirestore.instance.collection('photos').doc(localPhoto.title).set({
+      'id': localPhoto.title,
+      'url': downloadUrl,
+      'timestamp': DateTime.now(),
+      'creation_date': creationDate.toIso8601String(),
+      'size': fileSize,
+      'exif': {
+        'EXIF DateTimeOriginal': _convertToExifDateFormat(localPhoto.createDateTime.toIso8601String()),
+      },
+      'tags': tags,
+      'ocrText': extractedText,
+      'owner': {
+        'uid': currentUser.uid,
+        'email': currentUser.email ?? "Не указан",
+        'displayName': currentUser.displayName ?? "Аноним",
+        'photoURL': currentUser.photoURL ?? "",
+      },
+      'sharedWith': {},
+      'folderIds': [],
+      'folderShares': {},
+      if (location != null) ...{
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+        'address': address ?? '',
+      } else ...{
+        'latitude': '',
+        'longitude': '',
+        'address': '',
+      },
+    });
+    print("Файл успешно загружен в MinIO, информация сохранена в Firestore");
+    await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).update({
+      'storageUsed': FieldValue.increment(fileSize),
+    });
+    
+  } catch (e) {
+    print("Ошибка при загрузке изображения: $e");
   }
+}
 
   Future<String> uploadEditedFileToServer(File editedFile, String fileName) async {
   try {
@@ -494,83 +531,93 @@ class PhotoService {
 
   
 
-  Future<bool> uploadImage(File? selectedImage, User? currentUser) async {
-    try {
-      File file = selectedImage!;
-      String fileName = p.basename(file.path);
-      Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
-      DateTime creationDate = DateTime.now();
-      if (exifData.containsKey('DateTimeOriginal')) {
-        String? dateString = exifData['DateTimeOriginal']?.printable;
-        if (dateString != null) {
-          try {
-            creationDate = _parseExifDate(dateString);
-          } catch (e) {
-            print("Ошибка парсинга даты EXIF: $e");
-          }
-        }
-      }
-      String bucketName = 'photo';
-      final existingPhoto = await FirebaseFirestore.instance
-          .collection('photos')
-          .where('id', isEqualTo: fileName)
-          .get();
-      if (existingPhoto.docs.isNotEmpty) {
+ Future<bool> uploadImage(File? selectedImage, User? currentUser) async {
+  try {
+    File file = selectedImage!;
+    String fileName = p.basename(file.path);
+    int fileSize = await file.length();
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).get();
+    if (userDoc.exists) {
+      Map<String, dynamic> data = userDoc.data()!;
+      int storageUsed = data['storageUsed'] ?? 0;
+      int storageQuota = data['storageQuota'] ?? (100 * 1024 * 1024);
+      int availableBytes = storageQuota - storageUsed;
+      if (fileSize > availableBytes) {
+        print("Недостаточно места. Доступно: $availableBytes байт, требуется: $fileSize байт.");
         return false;
       }
-      bool bucketExists = await minio.bucketExists(bucketName);
-      if (!bucketExists) {
-        await minio.makeBucket(bucketName);
-      }
-      var stream = file.openRead().transform(
-        StreamTransformer<List<int>, Uint8List>.fromHandlers(
-          handleData: (data, sink) {
-            sink.add(Uint8List.fromList(data));
-          },
-        ),
-      );
-      await minio.putObject(bucketName, fileName, stream);
-      String downloadUrl = await minio.presignedGetObject(
-        bucketName,
-        fileName,
-        expires: 7 * 24 * 3600,
-      );
-      final List<String> tags = await _getTranslatedImageLabels(file);
-      String extractedText = '';
-      try {
-        extractedText = await FlutterTesseractOcr.extractText(
-          file.path,
-          language: 'rus+eng',
-        );
-        extractedText = extractedText.trim();
-      } catch (e) {
-        print("Ошибка OCR с помощью Tesseract: $e");
-      }
-      await FirebaseFirestore.instance.collection('photos').add({
-        'id': fileName,
-        'url': downloadUrl,
-        'timestamp': DateTime.now(),
-        'creation_date': creationDate.toIso8601String(),
-        'exif': exifData.map((key, value) => MapEntry(key, value.printable)),
-        'tags': tags,
-        'ocrText': extractedText,
-        'owner': {
-          'uid': currentUser?.uid,
-          'email': currentUser?.email ?? "Не указан",
-          'displayName': currentUser?.displayName ?? "Аноним",
-          'photoURL': currentUser?.photoURL ?? "",
-        },
-        'sharedWith': {},
-        'folderIds': [],
-        'folderShares': {},
-        'longitude': '',
-        'latitude': '',
-        'address': '',
-      });
-      return true;
-    } catch (e) {
-      print("Ошибка при загрузке изображения: $e");
+    } else {
+      print("Документ пользователя не найден");
       return false;
     }
+    Map<String, IfdTag> exifData = await readExifFromBytes(await file.readAsBytes());
+    DateTime creationDate = DateTime.now();
+    if (exifData.containsKey('DateTimeOriginal')) {
+      String? dateString = exifData['DateTimeOriginal']?.printable;
+      if (dateString != null) {
+        try {
+          creationDate = _parseExifDate(dateString);
+        } catch (e) {
+          print("Ошибка парсинга даты EXIF: $e");
+        }
+      }
+    }
+    
+    String bucketName = 'photo';
+    final existingPhoto = await FirebaseFirestore.instance.collection('photos').where('id', isEqualTo: fileName).get();
+    if (existingPhoto.docs.isNotEmpty) {
+      return false;
+    }
+    bool bucketExists = await minio.bucketExists(bucketName);
+    if (!bucketExists) {
+      await minio.makeBucket(bucketName);
+    }
+    var stream = file.openRead().transform(
+      StreamTransformer<List<int>, Uint8List>.fromHandlers(
+        handleData: (data, sink) {
+          sink.add(Uint8List.fromList(data));
+        },
+      ),
+    );
+    await minio.putObject(bucketName, fileName, stream);
+    String downloadUrl = await minio.presignedGetObject(bucketName, fileName, expires: 7 * 24 * 3600);
+    final List<String> tags = await _getTranslatedImageLabels(file);
+    String extractedText = '';
+    try {
+      extractedText = await FlutterTesseractOcr.extractText(file.path, language: 'rus+eng');
+      extractedText = extractedText.trim();
+    } catch (e) {
+      print("Ошибка OCR с помощью Tesseract: $e");
+    }
+    await FirebaseFirestore.instance.collection('photos').add({
+      'id': fileName,
+      'url': downloadUrl,
+      'timestamp': DateTime.now(),
+      'creation_date': creationDate.toIso8601String(),
+      'exif': exifData.map((key, value) => MapEntry(key, value.printable)),
+      'tags': tags,
+      'ocrText': extractedText,
+      'owner': {
+        'uid': currentUser.uid,
+        'email': currentUser.email ?? "Не указан",
+        'displayName': currentUser.displayName ?? "Аноним",
+        'photoURL': currentUser.photoURL ?? "",
+      },
+      'size': fileSize,
+      'sharedWith': {},
+      'folderIds': [],
+      'folderShares': {},
+      'longitude': '',
+      'latitude': '',
+      'address': '',
+    });
+    await FirebaseFirestore.instance.collection('users').doc(currentUser.uid)
+        .update({'storageUsed': FieldValue.increment(fileSize)});
+    
+    return true;
+  } catch (e) {
+    print("Ошибка при загрузке изображения: $e");
+    return false;
   }
+}
 }
