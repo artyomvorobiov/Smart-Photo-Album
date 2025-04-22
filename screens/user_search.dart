@@ -5,6 +5,12 @@ class UserSearchDelegate extends SearchDelegate<Map<String, dynamic>?> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final List<String> excludedUserIds;
 
+
+  final Color backgroundColor = const Color(0xFFF5EEDC); 
+  final Color primaryColor = const Color(0xFF27548A); 
+  final Color secondaryColor = const Color(0xFF183B4E); 
+  final Color accentColor = const Color(0xFFDDA853); 
+
   UserSearchDelegate({this.excludedUserIds = const []});
 
   @override
@@ -13,19 +19,19 @@ class UserSearchDelegate extends SearchDelegate<Map<String, dynamic>?> {
   @override
   ThemeData appBarTheme(BuildContext context) {
     return ThemeData(
-      primaryColor: Colors.transparent,
-      scaffoldBackgroundColor: Colors.transparent,
+      primaryColor: primaryColor,
+      scaffoldBackgroundColor: backgroundColor,
       appBarTheme: AppBarTheme(
-        backgroundColor:  Color.fromARGB(185, 122, 137, 206),
+        backgroundColor: primaryColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: accentColor),
       ),
       inputDecorationTheme: const InputDecorationTheme(
         hintStyle: TextStyle(color: Colors.white70, fontSize: 18),
         border: InputBorder.none,
       ),
-      textTheme: const TextTheme(
-        titleLarge: TextStyle(color: Colors.white, fontSize: 20),
+      textTheme: TextTheme(
+        titleLarge: TextStyle(color: accentColor, fontSize: 20),
       ),
     );
   }
@@ -68,11 +74,11 @@ class UserSearchDelegate extends SearchDelegate<Map<String, dynamic>?> {
 
   Widget _buildSearchResults() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color(0xFF89CFFD),
-            Color(0xFFB084CC),
+            backgroundColor,
+            accentColor,
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -82,19 +88,29 @@ class UserSearchDelegate extends SearchDelegate<Map<String, dynamic>?> {
           ? Center(
               child: Text(
                 'Введите ник или email для поиска',
-                style: TextStyle(fontSize: 20, color: Colors.white70),
+                style: TextStyle(
+                  fontSize: 20,
+                  color: secondaryColor.withOpacity(0.8),
+                ),
               ),
             )
           : FutureBuilder<List<Map<String, dynamic>>>(
               future: _searchUsers(query),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation(accentColor),
+                    ),
+                  );
                 } else if (snapshot.hasError) {
                   return Center(
                     child: Text(
                       'Ошибка: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red),
+                      style: TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 18,
+                      ),
                     ),
                   );
                 }
@@ -103,41 +119,60 @@ class UserSearchDelegate extends SearchDelegate<Map<String, dynamic>?> {
                   return Center(
                     child: Text(
                       'Пользователь не найден',
-                      style: TextStyle(color: Colors.white, fontSize: 20),
+                      style: TextStyle(
+                        color: secondaryColor,
+                        fontSize: 20,
+                      ),
                     ),
                   );
                 }
                 return ListView.builder(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   itemCount: results.length,
                   itemBuilder: (context, index) {
                     final user = results[index];
                     final nickname = (user['nickname'] ?? '').toString();
                     final email = (user['email'] ?? '').toString();
                     return Card(
-                      color: Colors.white.withOpacity(0.8),
-                      elevation: 4,
+                      color: Colors.white.withOpacity(0.9),
+                      elevation: 3,
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 6, horizontal: 4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                            color: primaryColor.withOpacity(0.5), width: 1),
                       ),
-                      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(12),
                         leading: CircleAvatar(
-                          backgroundColor: Colors.blueGrey,
+                          backgroundColor: primaryColor,
                           radius: 28,
                           child: Text(
-                            nickname.isNotEmpty ? nickname[0].toUpperCase() : '?',
-                            style: const TextStyle(color: Colors.white, fontSize: 22),
+                            nickname.isNotEmpty
+                                ? nickname[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              color: accentColor,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         title: Text(
                           nickname,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: secondaryColor,
+                          ),
                         ),
                         subtitle: Text(
                           email,
-                          style: const TextStyle(fontSize: 16),
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: secondaryColor.withOpacity(0.8),
+                          ),
                         ),
                         onTap: () {
                           close(context, user);
