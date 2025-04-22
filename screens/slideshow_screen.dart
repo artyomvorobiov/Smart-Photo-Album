@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+const Color kBackgroundColor = Color(0xFFF5EEDC); 
+const Color kPrimaryColor = Color(0xFF27548A); 
+const Color kAppBarColor = Color(0xFF183B4E); 
+const Color kAccentColor = Color(0xFFDDA853); 
 
 class SlideshowScreen extends StatefulWidget {
   final List<Map<String, dynamic>> photos;
@@ -35,6 +39,7 @@ class _SlideshowScreenState extends State<SlideshowScreen> {
   @override
   void dispose() {
     _timer.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -144,6 +149,7 @@ class _SlideshowScreenState extends State<SlideshowScreen> {
     Gradient backgroundGradient = _getBackgroundGradient();
 
     return Scaffold(
+      backgroundColor: kBackgroundColor,
       body: Stack(
         children: [
           Container(
@@ -192,23 +198,27 @@ class _SlideshowScreenState extends State<SlideshowScreen> {
     return Container(
       height: 100,
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-      color: Colors.black.withOpacity(0.5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
-          Text(
-            widget.name,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+      color: kAppBarColor.withOpacity(0.8),
+      child: SafeArea(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              color: kAccentColor,
+              onPressed: () => Navigator.pop(context),
             ),
-          ),
-        ],
+            Text(
+              widget.name,
+              style: const TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                color: kBackgroundColor,
+              ),
+            ),
+            const SizedBox(width: 48),
+          ],
+        ),
       ),
     );
   }
@@ -220,7 +230,7 @@ class _SlideshowScreenState extends State<SlideshowScreen> {
       right: 20,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
+          color: kAppBarColor.withOpacity(0.8),
           borderRadius: BorderRadius.circular(10),
         ),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
@@ -228,27 +238,31 @@ class _SlideshowScreenState extends State<SlideshowScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             IconButton(
-              icon: const Icon(Icons.skip_previous, size: 30, color: Colors.white),
+              icon: Icon(Icons.skip_previous, size: 30, color: kAccentColor),
+              tooltip: "Предыдущее фото",
               onPressed: _previousPhoto,
             ),
             IconButton(
               icon: Icon(
                 _manualControl ? Icons.play_arrow : Icons.pause,
                 size: 30,
-                color: Colors.white,
+                color: kAccentColor,
               ),
+              tooltip: _manualControl ? "Продолжить слайдшоу" : "Поставить на паузу",
               onPressed: _togglePlayPause,
             ),
             IconButton(
-              icon: const Icon(Icons.skip_next, size: 30, color: Colors.white),
+              icon: Icon(Icons.skip_next, size: 30, color: kAccentColor),
+              tooltip: "Следующее фото",
               onPressed: _nextPhoto,
             ),
             IconButton(
               icon: Icon(
                 _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
                 size: 30,
-                color: Colors.white,
+                color: kAccentColor,
               ),
+              tooltip: _isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим",
               onPressed: _toggleFullscreen,
             ),
           ],
